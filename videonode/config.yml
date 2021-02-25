@@ -8,7 +8,7 @@ cameras:
     #parameters:
 
   - id: front
-    source: v4l2src /dev/video0
+    source: udpsrc port=5600
     #parameters:
 
   - id: rear
