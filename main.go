@@ -116,7 +116,7 @@ func newMQTTClient() mqtt.Client {
 	t := time.Now()
 	token := jwt.NewWithClaims(jwt.GetSigningMethod(algorithm), &jwt.StandardClaims{
 		IssuedAt:  t.Unix(),
-		ExpiresAt: t.Add(time.Minute * 120).Unix(),
+		ExpiresAt: t.Add(72 * time.Hour).Unix(),
 		Audience:  projectID,
 	})
 	pass, err := token.SignedString(key)
