@@ -45,6 +45,11 @@ type missionEvent struct {
 	Timestamp   time.Time `json:"timestamp"`
 }
 
+type deviceState struct {
+	StartedAt time.Time `json:"started_at"`
+	Message   string    `json:"message"`
+}
+
 func InitializeTrust(client mqtt.Client) {
 	//publicKey, privateKey, err := ed25519.GenerateKey(nil)
 	privateKey, err := rsa.GenerateKey(rand.Reader, 4096)
@@ -312,4 +317,25 @@ func startCommandHandlers(ctx context.Context, wg *sync.WaitGroup, mqttClient mq
 	if err := token.Error(); err != nil {
 		log.Fatalf("Error on subscribe: %v", err)
 	}
+
+	// Latest config received on startup
+	configTopic := fmt.Sprintf("/devices/%s/config", *deviceID)
+	configToken := mqttClient.Subscribe(configTopic, 0, func(client mqtt.Client, msg mqtt.Message) {
+		log.Printf("Got config: %v", string(msg.Payload()))
+	})
+	if err := configToken.Error(); err != nil {
+		log.Fatalf("Error on subscribe: %v", err)
+	}
+
+	publishDeviceState(ctx, mqttClient)
+}
+
+func publishDeviceState(ctx context.Context, mqttClient mqtt.Client) {
+	topic := fmt.Sprintf("/devices/%s/state", *deviceID)
+	msg := deviceState{
+		StartedAt: time.Now().UTC(),
+		Message:   "hello world",
+	}
+	b, _ := json.Marshal(msg)
+	mqttClient.Publish(topic, 1, false, b)
 }
