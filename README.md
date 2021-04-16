@@ -29,5 +29,6 @@ go build
 ./communication_link -device_id "<my-device-id>"
 videonode/videonode -device_id "<my-device-id>"
 ```
-
+*IMPORTANT*<br>
+videonode has been removed and its functionality is now in depthai_ctrl ROS2 node.
 
