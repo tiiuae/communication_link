@@ -17,6 +17,7 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/tiiuae/communication_link/missionengine"
 	ros "github.com/tiiuae/communication_link/ros"
+	types "github.com/tiiuae/communication_link/types"
 )
 
 const (
@@ -66,6 +67,7 @@ func main() {
 
 	startTelemetry(ctx, &wg, mqttClient, localNode)
 	startCommandHandlers(ctx, &wg, mqttClient, localNode, me)
+	publishDefaultMesh(ctx, mqttClient, localNode)
 
 	// wait for termination and close quit to signal all
 	<-terminationSignals
@@ -157,4 +159,18 @@ func newMQTTClient() mqtt.Client {
 	// need mqtt reconnect each 120 minutes for long use
 
 	return client
+}
+
+func publishDefaultMesh(ctx context.Context, mqttClient mqtt.Client, node *ros.Node) {
+	pub := node.InitPublisher("mesh_parameters", "std_msgs/msg/String", (*types.String)(nil))
+
+	text, err := ioutil.ReadFile("./default_mesh.json")
+	if err != nil {
+		log.Printf("Failed to read default_mesh.json: %v", err)
+		return
+	}
+
+	pub.DoPublish(types.GenerateString(string(text)))
+
+	pub.Finish()
 }

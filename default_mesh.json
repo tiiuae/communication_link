@@ -1,0 +1,13 @@
+{
+    "api_version": 1,
+    "ssid": "gold",
+    "key": "foobar",
+    "enc": "wep",
+    "ap_mac": "00:11:22:33:44:55",
+    "country": "fi",
+    "frequency": "5220",
+    "ip": "192.168.1.1",
+    "subnet": "255.255.255.0",
+    "tx_power": "30",
+    "mode": "mesh"
+}
