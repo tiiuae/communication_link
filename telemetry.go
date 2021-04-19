@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"strings"
 	"sync"
 	"time"
 
@@ -40,6 +41,11 @@ type telemetry struct {
 	NavState     uint8
 }
 
+type debugValue struct {
+	Updated time.Time
+	Value   string
+}
+type debugValues map[string]debugValue
 type sensorData struct {
 	SensorData types.SensorCombined
 	DeviceID   string
@@ -174,8 +180,44 @@ func handleBatteryMessages(ctx context.Context, node *ros.Node) {
 	}
 }
 
+func handleDebugValues(ctx context.Context, node *ros.Node, mqttClient mqtt.Client) {
+	topic := fmt.Sprintf("/devices/%s/%s", *deviceID, "events/debug-values")
+	messages := make(chan types.String)
+	sub := node.InitSubscriber(messages, "debug_values", "std_msgs/msg/String")
+	var currentValues debugValues = make(map[string]debugValue)
+
+	go sub.DoSubscribe(ctx)
+	updated := false
+	ticker := time.NewTicker(100 * time.Millisecond)
+	for {
+		select {
+		case m, ok := <-messages:
+			if !ok {
+				return
+			}
+			msg := m.GetString()
+			parts := strings.SplitN(msg, ":", 3)
+			from := parts[0]
+			name := parts[1]
+			value := parts[2]
+			currentValues[from+":"+name] = debugValue{
+				Updated: time.Now(),
+				Value:   value,
+			}
+			updated = true
+		case <-ticker.C:
+			if updated {
+				updated = false
+				b, _ := json.Marshal(currentValues)
+				mqttClient.Publish(topic, qos, retain, string(b))
+			}
+		}
+	}
+
+}
+
 func startTelemetry(ctx context.Context, wg *sync.WaitGroup, mqttClient mqtt.Client, node *ros.Node) {
-	wg.Add(5)
+	wg.Add(6)
 	go func() {
 		defer wg.Done()
 		handleGPSMessages(ctx, node)
@@ -196,5 +238,9 @@ func startTelemetry(ctx context.Context, wg *sync.WaitGroup, mqttClient mqtt.Cli
 	go func() {
 		defer wg.Done()
 		startSendingTelemetry(ctx, mqttClient)
+	}()
+	go func() {
+		defer wg.Done()
+		handleDebugValues(ctx, node, mqttClient)
 	}()
 }
