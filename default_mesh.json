@@ -1,7 +1,7 @@
 {
     "api_version": 1,
     "ssid": "gold",
-    "key": "foobar",
+    "key": "1234567890",
     "enc": "wep",
     "ap_mac": "00:11:22:33:44:55",
     "country": "fi",
