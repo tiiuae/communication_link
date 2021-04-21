@@ -49,6 +49,7 @@ type VehicleLocalPosition struct {
 	RefAlt              float32
 	DistBottom          float32
 	DistBottomValid     bool
+        DistBottomSensorBitfield uint8
 	Eph                 float32
 	Epv                 float32
 	Evh                 float32

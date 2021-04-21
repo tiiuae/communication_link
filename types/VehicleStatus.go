@@ -81,6 +81,7 @@ type VehicleStatus struct {
 	ArmingState                  uint8
 	HilState                     uint8
 	Failsafe                     bool
+        FailsafeTimestamp            uint64
 	SystemType                   uint8
 	SystemId                     uint8
 	ComponentId                  uint8
@@ -103,6 +104,8 @@ type VehicleStatus struct {
 	OnboardControlSensorsHealth  uint32
 	LatestArmingReason           uint8
 	LatestDisarmingReason        uint8
+        ArmedTime                    uint64
+        TakeoffTime                  uint64
 }
 
 //TypeSupport ROS msg typesupport
