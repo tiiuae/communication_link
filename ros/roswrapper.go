@@ -84,6 +84,7 @@ static inline void* init_publisher(void* ctx, void* node, char* topic, void* ts)
 	pub->pub_ptr = malloc(sizeof(rcl_publisher_t));
 	*pub->pub_ptr = rcl_get_zero_initialized_publisher();
 	pub->pub_options = rcl_publisher_get_default_options();
+	pub->pub_options.qos = rmw_qos_profile_system_default;
 	ret = rcl_publisher_init(pub->pub_ptr, node_ptr,  (const rosidl_message_type_support_t*)ts, topic, &pub->pub_options);
 	printf("init publisher after rcl_publisher_init\n");
 	return (void*)pub;
@@ -130,6 +131,7 @@ static inline void* init_subscriber(void* ctx, void* node, char* topic, char* ms
 
 	//rcl_subscription_options_t subscription_options = rcl_subscription_get_default_options();
 	sub->sub_options = rcl_subscription_get_default_options();
+	sub->sub_options.qos = rmw_qos_profile_system_default;
 	sub->allocator = rcutils_get_default_allocator();
 
 	sub->sub_ptr = malloc(sizeof(rcl_subscription_t));
