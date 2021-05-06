@@ -1,3 +1,5 @@
 communication_link
 roswrapper/build/
 db/*
+*/ssh/*
+*.pem

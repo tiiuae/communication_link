@@ -9,7 +9,7 @@ import (
 	"sync"
 	"syscall"
 
-	ros "github.com/tiiuae/communication_link/ros"
+	ros "github.com/tiiuae/communication_link/missionengine/ros"
 )
 
 var (

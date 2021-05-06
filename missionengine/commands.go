@@ -7,9 +7,9 @@ import (
 	"log"
 	"sync"
 
+	ros "github.com/tiiuae/communication_link/missionengine/ros"
 	msg "github.com/tiiuae/communication_link/missionengine/types"
-	ros "github.com/tiiuae/communication_link/ros"
-	types "github.com/tiiuae/communication_link/types"
+	types "github.com/tiiuae/communication_link/missionengine/types"
 )
 
 type JoinMission struct {

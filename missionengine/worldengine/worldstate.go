@@ -5,9 +5,9 @@ import (
 	"log"
 	"time"
 
+	"github.com/tiiuae/communication_link/missionengine/ros"
 	"github.com/tiiuae/communication_link/missionengine/types"
-	"github.com/tiiuae/communication_link/ros"
-	rosTypes "github.com/tiiuae/communication_link/types"
+	rosTypes "github.com/tiiuae/communication_link/missionengine/types"
 )
 
 const (

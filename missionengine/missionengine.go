@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/tiiuae/communication_link/missionengine/gittransport"
+	"github.com/tiiuae/communication_link/missionengine/ros"
 	msg "github.com/tiiuae/communication_link/missionengine/types"
+	types "github.com/tiiuae/communication_link/missionengine/types"
 	"github.com/tiiuae/communication_link/missionengine/worldengine"
-	"github.com/tiiuae/communication_link/ros"
-	types "github.com/tiiuae/communication_link/types"
 )
 
 const (

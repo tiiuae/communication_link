@@ -46,6 +46,8 @@ github.com/sergi/go-diff v1.1.0/go.mod h1:STckp+ISIX8hZLjrqAeVduY0gWCT9IjLuqbuNX
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/testify v1.4.0/go.mod h1:j7eGeouHqKxXV5pUuKE4zz7dFj8WfuZ+81PSLYec5m4=
 github.com/tiiuae/communication_link v0.0.0-20210119110432-5dcc3d08ef79 h1:sgRCDflB5NgROF9B6feQG+uMQwNaTgtnjGc1rUsJUYI=
+github.com/tiiuae/communication_link v0.0.0-20210426064105-99f90b093003 h1:hz6RPF8TLQC90FVCC6n7ISzuNdbeRzcd4llRkn2sqhQ=
+github.com/tiiuae/communication_link v0.0.0-20210426064105-99f90b093003/go.mod h1:ARIv5Q6DUT//q8iZL/nlg0WhmQXhY6fbUBNHihZZSbE=
 github.com/tiiuae/fog_sw v0.0.0-20210119131617-c83cdb0fb65b h1:D3LzF3sDStPvsYy/WJlimnzugPXpD/rAdzMqne9CBY4=
 github.com/xanzy/ssh-agent v0.2.1 h1:TCbipTQL2JiiCprBWx9frJ2eJlCYT00NmctrHxVAr70=
 github.com/xanzy/ssh-agent v0.2.1/go.mod h1:mLlQY/MoOhWBj+gOGMQkOeiEvkx+8pJSI+0Bx9h2kr4=

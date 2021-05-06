@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"log"
 
+	"github.com/tiiuae/communication_link/missionengine/ros"
 	"github.com/tiiuae/communication_link/missionengine/types"
-	"github.com/tiiuae/communication_link/ros"
 )
 
 type WorldEngine struct {
