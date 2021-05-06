@@ -1,4 +1,4 @@
-module github.com/tiiuae/communication_link
+module github.com/tiiuae/communication_link/communicationlink
 
 go 1.14
 

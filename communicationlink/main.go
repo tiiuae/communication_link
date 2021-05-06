@@ -15,8 +15,8 @@ import (
 
 	jwt "github.com/dgrijalva/jwt-go"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	ros "github.com/tiiuae/communication_link/ros"
-	types "github.com/tiiuae/communication_link/types"
+	ros "github.com/tiiuae/communication_link/communicationlink/ros"
+	types "github.com/tiiuae/communication_link/communicationlink/types"
 )
 
 const (
