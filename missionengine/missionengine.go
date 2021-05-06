@@ -1,15 +1,12 @@
-package missionengine
+package main
 
 import (
-	// "C"
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"sync"
 	"time"
 
-	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/tiiuae/communication_link/missionengine/gittransport"
 	msg "github.com/tiiuae/communication_link/missionengine/types"
 	"github.com/tiiuae/communication_link/missionengine/worldengine"
@@ -27,13 +24,12 @@ type MissionEngine struct {
 	wg            *sync.WaitGroup
 	localNode     *ros.Node
 	fleetNode     *ros.Node
-	mqttClient    mqtt.Client
 	droneName     string
 	updateBacklog chan struct{}
 }
 
-func New(ctx context.Context, wg *sync.WaitGroup, localNode *ros.Node, fleetNode *ros.Node, mqttClient mqtt.Client, droneName string) *MissionEngine {
-	return &MissionEngine{ctx, wg, localNode, fleetNode, mqttClient, droneName, make(chan struct{})}
+func New(ctx context.Context, wg *sync.WaitGroup, localNode *ros.Node, fleetNode *ros.Node, droneName string) *MissionEngine {
+	return &MissionEngine{ctx, wg, localNode, fleetNode, droneName, make(chan struct{})}
 }
 
 func (me *MissionEngine) Start(gitServerAddress string, gitServerKey string) {
@@ -50,12 +46,12 @@ func (me *MissionEngine) Start(gitServerAddress string, gitServerKey string) {
 		}()
 		log.Printf("Starting mission engine of drone: '%s'", droneName)
 		log.Printf("Running git clone...")
-		gt := gittransport.New(gitServerAddress, gitServerKey)
+		gt := gittransport.New(gitServerAddress, gitServerKey, droneName)
 
 		we := worldengine.New(droneName)
 
-		messages := make(chan msg.Message)
-		go runMessageLoop(ctx, wg, we, me.localNode, me.fleetNode, me.mqttClient, messages)
+		messages := make(chan msg.Message, 10)
+		go runMessageLoop(ctx, wg, we, me.localNode, me.fleetNode, messages)
 		go runGitTransport(ctx, wg, gt, messages, me.updateBacklog, droneName)
 		go runMissionEngineSubscriber(ctx, wg, messages, me.fleetNode, droneName)
 		go runMissionResultSubscriber(ctx, wg, messages, me.localNode, droneName)
@@ -66,40 +62,35 @@ func (me *MissionEngine) UpdateBacklog() {
 	me.updateBacklog <- struct{}{}
 }
 
-func runMessageLoop(ctx context.Context, wg *sync.WaitGroup, we *worldengine.WorldEngine, localNode *ros.Node, fleetNode *ros.Node, mqttClient mqtt.Client, ch <-chan msg.Message) {
+func runMessageLoop(ctx context.Context, wg *sync.WaitGroup, we *worldengine.WorldEngine, localNode *ros.Node, fleetNode *ros.Node, ch <-chan msg.Message) {
 	wg.Add(1)
 	defer wg.Done()
 
 	pub := fleetNode.InitPublisher(TOPIC_MISSION_ENGINE, "std_msgs/msg/String", (*types.String)(nil))
 	pubpath := localNode.InitPublisher("path", "nav_msgs/msg/Path", (*types.Path)(nil))
 	pubmavlink := localNode.InitPublisher("mavlinkcmd", "std_msgs/msg/String", (*types.String)(nil))
+	defer pub.Finish()
+	defer pubpath.Finish()
+	defer pubmavlink.Finish()
 
-	for m := range ch {
-		log.Printf("Message received: %s: %s", m.MessageType, m.Message)
-		messagesOut := we.HandleMessage(m, pubpath, pubmavlink)
-		for _, r := range messagesOut {
-			log.Printf("Message out: %v", r)
-			if r.MessageType == "tasks-assigned" || r.MessageType == "task-completed" {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case m := <-ch:
+			log.Printf("Message received: %s: %s", m.MessageType, m.Message)
+			messagesOut := we.HandleMessage(m, pubpath, pubmavlink)
+			for _, r := range messagesOut {
+				log.Printf("Message out: %v", r)
 				b, err := json.Marshal(r)
 				if err != nil {
 					panic("Unable to marshal missionengine message")
 				}
 				pub.DoPublish(types.GenerateString(string(b)))
-			}
-			if r.MessageType == "mission-plan" {
-				topic := fmt.Sprintf("/devices/%s/events/mission-plan", r.From)
-				mqttClient.Publish(topic, 1, false, r.Message)
-			}
-			if r.MessageType == "flight-plan" {
-				topic := fmt.Sprintf("/devices/%s/events/flight-plan", r.From)
-				mqttClient.Publish(topic, 1, false, r.Message)
+				time.Sleep(200 * time.Millisecond) // TODO: remove when rclgo in use
 			}
 		}
 	}
-
-	pub.Finish()
-	pubpath.Finish()
-	pubmavlink.Finish()
 }
 
 func runGitTransport(ctx context.Context, wg *sync.WaitGroup, gt *gittransport.GitEngine, ch chan<- msg.Message, gitPull <-chan struct{}, droneName string) {

@@ -213,11 +213,36 @@ func handleDebugValues(ctx context.Context, node *ros.Node, mqttClient mqtt.Clie
 			}
 		}
 	}
-
 }
 
-func startTelemetry(ctx context.Context, wg *sync.WaitGroup, mqttClient mqtt.Client, node *ros.Node) {
-	wg.Add(6)
+func handleMissionEngine(ctx context.Context, node *ros.Node, mqttClient mqtt.Client) {
+	messages := make(chan types.String)
+	sub := node.InitSubscriber(messages, "missionengine", "std_msgs/msg/String")
+	go sub.DoSubscribe(ctx)
+	for m := range messages {
+		str := m.GetString()
+		var msg missionsMessage
+		err := json.Unmarshal([]byte(str), &msg)
+		if err != nil {
+			log.Printf("Could not unmarshal payload: %v", err)
+			continue
+		}
+		log.Printf("Mission event: %s", msg.MessageType)
+		switch msg.MessageType {
+		case "mission-plan":
+			topic := fmt.Sprintf("/devices/%s/events/mission-plan", msg.From)
+			mqttClient.Publish(topic, 1, false, msg.Message)
+		case "flight-plan":
+			topic := fmt.Sprintf("/devices/%s/events/flight-plan", msg.From)
+			mqttClient.Publish(topic, 1, false, msg.Message)
+		default:
+			log.Printf("Unknown mission event: %s", msg.MessageType)
+		}
+	}
+}
+
+func startTelemetry(ctx context.Context, wg *sync.WaitGroup, mqttClient mqtt.Client, node *ros.Node, fleetNode *ros.Node) {
+	wg.Add(7)
 	go func() {
 		defer wg.Done()
 		handleGPSMessages(ctx, node)
@@ -242,5 +267,9 @@ func startTelemetry(ctx context.Context, wg *sync.WaitGroup, mqttClient mqtt.Cli
 	go func() {
 		defer wg.Done()
 		handleDebugValues(ctx, node, mqttClient)
+	}()
+	go func() {
+		defer wg.Done()
+		handleMissionEngine(ctx, fleetNode, mqttClient)
 	}()
 }

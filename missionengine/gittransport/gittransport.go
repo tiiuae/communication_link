@@ -36,8 +36,8 @@ func (me GitEngine) DataDir() string {
 	return "db/" + me.flagName
 }
 
-func New(gitServerAddress string, gitServerKey string) *GitEngine {
-	flagName := time.Now().Format("20060102150405")
+func New(gitServerAddress string, gitServerKey string, droneName string) *GitEngine {
+	flagName := time.Now().Format("20060102150405") + "-" + droneName
 	cloneRepository(gitServerAddress, flagName)
 
 	config := parseConfig(flagName)
@@ -58,8 +58,8 @@ func (m *GitEngine) CommitAll() {
 
 func (m *GitEngine) pullFiles() bool {
 	wd, _ := os.Getwd()
-	idPath := filepath.Join(wd, "/ssh/id_rsa")
-	khPath := filepath.Join(wd, "/ssh/known_host_cloud")
+	idPath := filepath.Join(wd, "../ssh/id_rsa")
+	khPath := filepath.Join(wd, "../ssh/known_host_cloud")
 	gitSSHCommand := fmt.Sprintf("ssh -i %s -o \"IdentitiesOnly=yes\" -o \"UserKnownHostsFile=%s\"", idPath, khPath)
 	cloneCmd := exec.Command("git", "pull", "--rebase")
 	cloneCmd.Env = []string{"GIT_SSH_COMMAND=" + gitSSHCommand}
@@ -75,8 +75,8 @@ func (m *GitEngine) pullFiles() bool {
 
 func cloneRepository(gitServerAddress string, flagName string) {
 	wd, _ := os.Getwd()
-	idPath := filepath.Join(wd, "/ssh/id_rsa")
-	khPath := filepath.Join(wd, "/ssh/known_host_cloud")
+	idPath := filepath.Join(wd, "../ssh/id_rsa")
+	khPath := filepath.Join(wd, "../ssh/known_host_cloud")
 	gitSSHCommand := fmt.Sprintf("ssh -i %s -o \"IdentitiesOnly=yes\" -o \"UserKnownHostsFile=%s\"", idPath, khPath)
 	cloneCmd := exec.Command("git", "clone", gitServerAddress, "db/"+flagName)
 	cloneCmd.Env = []string{"GIT_SSH_COMMAND=" + gitSSHCommand}

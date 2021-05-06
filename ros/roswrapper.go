@@ -172,7 +172,7 @@ static inline void* take_str_msg(void* sub, void* msg, void* ts, int typesize)
 	std_msgs__msg__String* strmsg = (std_msgs__msg__String*)msg;
 	rcl_ret_t ret = rcl_take(s, strmsg, NULL, NULL);
 	if(ret == 0){
-		printf("Got str message\n");
+		//printf("Got str message\n");
 		return strmsg;
 	}
 	return 0;

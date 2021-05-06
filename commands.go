@@ -16,7 +16,6 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"github.com/tiiuae/communication_link/missionengine"
 	ros "github.com/tiiuae/communication_link/ros"
 	types "github.com/tiiuae/communication_link/types"
 	"golang.org/x/crypto/ssh"
@@ -48,6 +47,15 @@ type missionEvent struct {
 type deviceState struct {
 	StartedAt time.Time `json:"started_at"`
 	Message   string    `json:"message"`
+}
+
+type missionsMessage struct {
+	Timestamp   time.Time `json:"timestamp"`
+	From        string    `json:"from"`
+	To          string    `json:"to"`
+	ID          string    `json:"id"`
+	MessageType string    `json:"message_type"`
+	Message     string    `json:"message"`
 }
 
 func InitializeTrust(client mqtt.Client) {
@@ -91,7 +99,7 @@ func InitializeTrust(client mqtt.Client) {
 	log.Printf("Trust initialized")
 }
 
-func JoinMission(client mqtt.Client, payload []byte, me *missionengine.MissionEngine) {
+func JoinMission(payload []byte, pubMissions *ros.Publisher) {
 	var info struct {
 		GitServerAddress string `json:"git_server_address"`
 		GitServerKey     string `json:"git_server_key"`
@@ -114,21 +122,47 @@ func JoinMission(client mqtt.Client, payload []byte, me *missionengine.MissionEn
 
 	missionSlug = info.MissionSlug
 
-	sshUrl := fmt.Sprintf("ssh://git@%s/%s.git", info.GitServerAddress, info.MissionSlug)
-	me.Start(sshUrl, info.GitServerKey)
+	msg := missionsMessage{
+		Timestamp:   time.Now().UTC(),
+		From:        "self",
+		To:          "self",
+		ID:          "id1",
+		MessageType: "join-mission",
+		Message:     string(payload),
+	}
+	b, _ := json.Marshal(msg)
+	pubMissions.DoPublish(types.GenerateString(string(b)))
 }
 
-func LeaveMission(client mqtt.Client, payload []byte, me *missionengine.MissionEngine) {
+func LeaveMission(payload []byte, pubMissions *ros.Publisher) {
 	missionSlug = ""
-	// me.Stop()
+	msg := missionsMessage{
+		Timestamp:   time.Now().UTC(),
+		From:        "self",
+		To:          "self",
+		ID:          "id1",
+		MessageType: "leave-mission",
+		Message:     "",
+	}
+	b, _ := json.Marshal(msg)
+	pubMissions.DoPublish(types.GenerateString(string(b)))
 }
 
-func UpdateBacklog(me *missionengine.MissionEngine) {
-	me.UpdateBacklog()
+func UpdateBacklog(pubMissions *ros.Publisher) {
+	msg := missionsMessage{
+		Timestamp:   time.Now().UTC(),
+		From:        "self",
+		To:          "self",
+		ID:          "id1",
+		MessageType: "update-backlog",
+		Message:     "",
+	}
+	b, _ := json.Marshal(msg)
+	pubMissions.DoPublish(types.GenerateString(string(b)))
 }
 
 // handleControlCommand takes a command string and forwards it to mavlinkcmd
-func handleControlCommand(command string, mqttClient mqtt.Client, pub *ros.Publisher, me *missionengine.MissionEngine) {
+func handleControlCommand(command string, mqttClient mqtt.Client, pubMavlink *ros.Publisher, pubMissions *ros.Publisher) {
 	var cmd controlCommand
 	err := json.Unmarshal([]byte(command), &cmd)
 	if err != nil {
@@ -142,31 +176,31 @@ func handleControlCommand(command string, mqttClient mqtt.Client, pub *ros.Publi
 		InitializeTrust(mqttClient)
 	case "join-mission":
 		log.Printf("Backend requesting to join a mission")
-		JoinMission(mqttClient, []byte(cmd.Payload), me)
+		JoinMission([]byte(cmd.Payload), pubMissions)
 	case "leave-mission":
 		log.Printf("Backend requesting to leave from mission")
-		LeaveMission(mqttClient, []byte(cmd.Payload), me)
+		LeaveMission([]byte(cmd.Payload), pubMissions)
 	case "update-backlog":
 		log.Printf("Backend requesting to update backlog")
-		UpdateBacklog(me)
+		UpdateBacklog(pubMissions)
 	case "takeoff":
 		log.Printf("Publishing 'takeoff' to /mavlinkcmd")
-		pub.DoPublish(types.GenerateString("takeoff"))
+		pubMavlink.DoPublish(types.GenerateString("takeoff"))
 	case "land":
 		log.Printf("Publishing 'land' to /mavlinkcmd")
-		pub.DoPublish(types.GenerateString("land"))
+		pubMavlink.DoPublish(types.GenerateString("land"))
 	case "start_mission":
 		log.Printf("Publishing 'start_mission' to /mavlinkcmd")
-		pub.DoPublish(types.GenerateString("start_mission"))
+		pubMavlink.DoPublish(types.GenerateString("start_mission"))
 	case "pause_mission":
 		log.Printf("Publishing 'pause_mission' to /mavlinkcmd")
-		pub.DoPublish(types.GenerateString("pause_mission"))
+		pubMavlink.DoPublish(types.GenerateString("pause_mission"))
 	case "resume_mission":
 		log.Printf("Publishing 'resume_mission' to /mavlinkcmd")
-		pub.DoPublish(types.GenerateString("resume_mission"))
+		pubMavlink.DoPublish(types.GenerateString("resume_mission"))
 	case "return_home":
 		log.Printf("Publishing 'return_home' to /mavlinkcmd")
-		pub.DoPublish(types.GenerateString("return_home"))
+		pubMavlink.DoPublish(types.GenerateString("return_home"))
 	//case "plan":
 	//	log.Printf("Publishing 'plan' to /mavlinkcmd")
 	//	msg.SetText("plan")
@@ -219,17 +253,19 @@ func handleGstreamerCommand(command string, pub *ros.Publisher) {
 }
 
 // handleControlCommands routine waits for commands and executes them. The routine quits when quit channel is closed
-func handleControlCommands(ctx context.Context, wg *sync.WaitGroup, mqttClient mqtt.Client, node *ros.Node, commands <-chan string, me *missionengine.MissionEngine) {
+func handleControlCommands(ctx context.Context, wg *sync.WaitGroup, mqttClient mqtt.Client, node *ros.Node, commands <-chan string) {
 	wg.Add(1)
 	defer wg.Done()
-	pub := node.InitPublisher("mavlinkcmd", "std_msgs/msg/String", (*types.String)(nil))
+	pubMavlink := node.InitPublisher("mavlinkcmd", "std_msgs/msg/String", (*types.String)(nil))
+	pubMissions := node.InitPublisher("missions", "std_msgs/msg/String", (*types.String)(nil))
+	// go test(pubMissions)
 	for {
 		select {
 		case <-ctx.Done():
-			pub.Finish()
+			pubMavlink.Finish()
 			return
 		case command := <-commands:
-			handleControlCommand(command, mqttClient, pub, me)
+			handleControlCommand(command, mqttClient, pubMavlink, pubMissions)
 		}
 	}
 }
@@ -285,13 +321,13 @@ func publishMissionState(ctx context.Context, wg *sync.WaitGroup, mqttClient mqt
 	}
 }
 
-func startCommandHandlers(ctx context.Context, wg *sync.WaitGroup, mqttClient mqtt.Client, node *ros.Node, me *missionengine.MissionEngine) {
+func startCommandHandlers(ctx context.Context, wg *sync.WaitGroup, mqttClient mqtt.Client, node *ros.Node) {
 
 	controlCommands := make(chan string)
 	missionCommands := make(chan string)
 	gstreamerCommands := make(chan string)
 
-	go handleControlCommands(ctx, wg, mqttClient, node, controlCommands, me)
+	go handleControlCommands(ctx, wg, mqttClient, node, controlCommands)
 	go handleMissionCommands(ctx, wg, node, missionCommands)
 	go handleGstreamerCommands(ctx, wg, node, gstreamerCommands)
 	go publishMissionState(ctx, wg, mqttClient)
