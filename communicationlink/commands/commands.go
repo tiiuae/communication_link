@@ -1,4 +1,4 @@
-package main
+package commands
 
 import (
 	"context"
@@ -16,10 +16,16 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	ros "github.com/tiiuae/communication_link/communicationlink/ros"
-	types "github.com/tiiuae/communication_link/communicationlink/types"
+	"github.com/tiiuae/communication_link/communicationlink/ros2app"
+	"github.com/tiiuae/rclgo/pkg/ros2"
+	nav_msgs "github.com/tiiuae/rclgo/pkg/ros2/msgs/nav_msgs/msg"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
+)
+
+const (
+	qos    = 1
+	retain = false
 )
 
 var missionSlug string = ""
@@ -58,7 +64,7 @@ type missionsMessage struct {
 	Message     string    `json:"message"`
 }
 
-func InitializeTrust(client mqtt.Client) {
+func initializeTrust(client mqtt.Client, deviceID string) {
 	//publicKey, privateKey, err := ed25519.GenerateKey(nil)
 	privateKey, err := rsa.GenerateKey(rand.Reader, 4096)
 	publicKey := &privateKey.PublicKey
@@ -85,7 +91,7 @@ func InitializeTrust(client mqtt.Client) {
 	})
 
 	// send public key to server
-	topic := fmt.Sprintf("/devices/%s/events/trust", *deviceID)
+	topic := fmt.Sprintf("/devices/%s/events/trust", deviceID)
 	tok := client.Publish(topic, qos, retain, trust)
 	if !tok.WaitTimeout(10 * time.Second) {
 		log.Printf("Could not send trust within 10s")
@@ -99,7 +105,7 @@ func InitializeTrust(client mqtt.Client) {
 	log.Printf("Trust initialized")
 }
 
-func JoinMission(payload []byte, pubMissions *ros.Publisher) {
+func joinMission(payload []byte, pubMissions *ros2.Publisher) {
 	var info struct {
 		GitServerAddress string `json:"git_server_address"`
 		GitServerKey     string `json:"git_server_key"`
@@ -131,10 +137,14 @@ func JoinMission(payload []byte, pubMissions *ros.Publisher) {
 		Message:     string(payload),
 	}
 	b, _ := json.Marshal(msg)
-	pubMissions.DoPublish(types.GenerateString(string(b)))
+
+	rclErr := pubMissions.Publish(ros2app.CreateString(string(b)))
+	if rclErr != nil {
+		log.Printf("Failed to publish: %v", rclErr)
+	}
 }
 
-func LeaveMission(payload []byte, pubMissions *ros.Publisher) {
+func leaveMission(payload []byte, pubMissions *ros2.Publisher) {
 	missionSlug = ""
 	msg := missionsMessage{
 		Timestamp:   time.Now().UTC(),
@@ -145,10 +155,11 @@ func LeaveMission(payload []byte, pubMissions *ros.Publisher) {
 		Message:     "",
 	}
 	b, _ := json.Marshal(msg)
-	pubMissions.DoPublish(types.GenerateString(string(b)))
+
+	pubMissions.Publish(ros2app.CreateString(string(b)))
 }
 
-func UpdateBacklog(pubMissions *ros.Publisher) {
+func updateBacklog(pubMissions *ros2.Publisher) {
 	msg := missionsMessage{
 		Timestamp:   time.Now().UTC(),
 		From:        "self",
@@ -158,11 +169,12 @@ func UpdateBacklog(pubMissions *ros.Publisher) {
 		Message:     "",
 	}
 	b, _ := json.Marshal(msg)
-	pubMissions.DoPublish(types.GenerateString(string(b)))
+
+	pubMissions.Publish(ros2app.CreateString(string(b)))
 }
 
 // handleControlCommand takes a command string and forwards it to mavlinkcmd
-func handleControlCommand(command string, mqttClient mqtt.Client, pubMavlink *ros.Publisher, pubMissions *ros.Publisher) {
+func handleControlCommand(command, deviceID string, mqttClient mqtt.Client, pubMavlink *ros2.Publisher, pubMissions *ros2.Publisher) {
 	var cmd controlCommand
 	err := json.Unmarshal([]byte(command), &cmd)
 	if err != nil {
@@ -173,34 +185,34 @@ func handleControlCommand(command string, mqttClient mqtt.Client, pubMavlink *ro
 	switch cmd.Command {
 	case "initialize-trust":
 		log.Printf("Initializing trust with backend")
-		InitializeTrust(mqttClient)
+		initializeTrust(mqttClient, deviceID)
 	case "join-mission":
 		log.Printf("Backend requesting to join a mission")
-		JoinMission([]byte(cmd.Payload), pubMissions)
+		joinMission([]byte(cmd.Payload), pubMissions)
 	case "leave-mission":
 		log.Printf("Backend requesting to leave from mission")
-		LeaveMission([]byte(cmd.Payload), pubMissions)
+		leaveMission([]byte(cmd.Payload), pubMissions)
 	case "update-backlog":
 		log.Printf("Backend requesting to update backlog")
-		UpdateBacklog(pubMissions)
+		updateBacklog(pubMissions)
 	case "takeoff":
 		log.Printf("Publishing 'takeoff' to /mavlinkcmd")
-		pubMavlink.DoPublish(types.GenerateString("takeoff"))
+		pubMavlink.Publish(ros2app.CreateString("takeoff"))
 	case "land":
 		log.Printf("Publishing 'land' to /mavlinkcmd")
-		pubMavlink.DoPublish(types.GenerateString("land"))
+		pubMavlink.Publish(ros2app.CreateString("land"))
 	case "start_mission":
 		log.Printf("Publishing 'start_mission' to /mavlinkcmd")
-		pubMavlink.DoPublish(types.GenerateString("start_mission"))
+		pubMavlink.Publish(ros2app.CreateString("start_mission"))
 	case "pause_mission":
 		log.Printf("Publishing 'pause_mission' to /mavlinkcmd")
-		pubMavlink.DoPublish(types.GenerateString("pause_mission"))
+		pubMavlink.Publish(ros2app.CreateString("pause_mission"))
 	case "resume_mission":
 		log.Printf("Publishing 'resume_mission' to /mavlinkcmd")
-		pubMavlink.DoPublish(types.GenerateString("resume_mission"))
+		pubMavlink.Publish(ros2app.CreateString("resume_mission"))
 	case "return_home":
 		log.Printf("Publishing 'return_home' to /mavlinkcmd")
-		pubMavlink.DoPublish(types.GenerateString("return_home"))
+		pubMavlink.Publish(ros2app.CreateString("return_home"))
 	//case "plan":
 	//	log.Printf("Publishing 'plan' to /mavlinkcmd")
 	//	msg.SetText("plan")
@@ -214,7 +226,7 @@ func handleControlCommand(command string, mqttClient mqtt.Client, pubMavlink *ro
 }
 
 // handleMissionCommand takes a command string and forwards it to mavlinkcmd
-func handleMissionCommand(command string, pub *ros.Publisher) {
+func handleMissionCommand(command string, pub *ros2.Publisher) {
 	var cmd controlCommand
 	err := json.Unmarshal([]byte(command), &cmd)
 	if err != nil {
@@ -224,15 +236,15 @@ func handleMissionCommand(command string, pub *ros.Publisher) {
 	switch cmd.Command {
 	case "new_mission":
 		log.Printf("Publishing mission to where ever")
-		//		mission := new (types.PoseStamped)
-		pub.DoPublish(types.GeneratePath())
+		var path nav_msgs.Path
+		pub.Publish(&path)
 	default:
 		log.Printf("Unknown command: %v", command)
 	}
 }
 
 // handleGstreamerCommand takes a command string and forwards it to gstreamercmd
-func handleGstreamerCommand(command string, pub *ros.Publisher) {
+func handleGstreamerCommand(command string, pub *ros2.Publisher) {
 	var cmd gstreamerCmd
 
 	err := json.Unmarshal([]byte(command), &cmd)
@@ -243,42 +255,41 @@ func handleGstreamerCommand(command string, pub *ros.Publisher) {
 	switch cmd.Command {
 	case "start":
 		log.Printf("Publishing 'start' to /videostreamrcmd")
-		pub.DoPublish(types.GenerateString(command))
+		pub.Publish(ros2app.CreateString(command))
 	case "stop":
 		log.Printf("Publishing 'stop' to /videostreamrcmd")
-		pub.DoPublish(types.GenerateString(command))
+		pub.Publish(ros2app.CreateString(command))
 	default:
 		log.Printf("Unknown command: %v", command)
 	}
 }
 
 // handleControlCommands routine waits for commands and executes them. The routine quits when quit channel is closed
-func handleControlCommands(ctx context.Context, wg *sync.WaitGroup, mqttClient mqtt.Client, node *ros.Node, commands <-chan string) {
+func handleControlCommands(ctx context.Context, wg *sync.WaitGroup, mqttClient mqtt.Client, node *ros2.Node, commands <-chan string, deviceID string) {
 	wg.Add(1)
 	defer wg.Done()
-	pubMavlink := node.InitPublisher("mavlinkcmd", "std_msgs/msg/String", (*types.String)(nil))
-	pubMissions := node.InitPublisher("missions", "std_msgs/msg/String", (*types.String)(nil))
-	// go test(pubMissions)
+	pubMavlink := ros2app.NewPublisher(node, "mavlinkcmd", "std_msgs/String")
+	pubMissions := ros2app.NewPublisher(node, "missions", "std_msgs/String")
 	for {
 		select {
 		case <-ctx.Done():
-			pubMavlink.Finish()
+			pubMavlink.Fini()
 			return
 		case command := <-commands:
-			handleControlCommand(command, mqttClient, pubMavlink, pubMissions)
+			handleControlCommand(command, deviceID, mqttClient, pubMavlink, pubMissions)
 		}
 	}
 }
 
 // handleMissionCommands routine waits for commands and executes them. The routine quits when quit channel is closed
-func handleMissionCommands(ctx context.Context, wg *sync.WaitGroup, node *ros.Node, commands <-chan string) {
+func handleMissionCommands(ctx context.Context, wg *sync.WaitGroup, node *ros2.Node, commands <-chan string) {
 	wg.Add(1)
 	defer wg.Done()
-	pub := node.InitPublisher("whereever", "nav_msgs/msg/Path", (*types.Path)(nil))
+	pub := ros2app.NewPublisher(node, "whereever", "nav_msgs/Path")
 	for {
 		select {
 		case <-ctx.Done():
-			pub.Finish()
+			pub.Fini()
 			return
 		case command := <-commands:
 			handleMissionCommand(command, pub)
@@ -287,14 +298,14 @@ func handleMissionCommands(ctx context.Context, wg *sync.WaitGroup, node *ros.No
 }
 
 // handleGstreamerCommands routine waits for commands and executes them. The routine quits when quit channel is closed
-func handleGstreamerCommands(ctx context.Context, wg *sync.WaitGroup, node *ros.Node, commands <-chan string) {
+func handleGstreamerCommands(ctx context.Context, wg *sync.WaitGroup, node *ros2.Node, commands <-chan string) {
 	wg.Add(1)
 	defer wg.Done()
-	pub := node.InitPublisher("videostreamcmd", "std_msgs/msg/String", (*types.String)(nil))
+	pub := ros2app.NewPublisher(node, "videostreamcmd", "std_msgs/String")
 	for {
 		select {
 		case <-ctx.Done():
-			pub.Finish()
+			pub.Fini()
 			return
 		case command := <-commands:
 			handleGstreamerCommand(command, pub)
@@ -302,7 +313,7 @@ func handleGstreamerCommands(ctx context.Context, wg *sync.WaitGroup, node *ros.
 	}
 }
 
-func publishMissionState(ctx context.Context, wg *sync.WaitGroup, mqttClient mqtt.Client) {
+func publishMissionState(ctx context.Context, wg *sync.WaitGroup, mqttClient mqtt.Client, deviceID string) {
 	wg.Add(1)
 	defer wg.Done()
 	for {
@@ -310,7 +321,7 @@ func publishMissionState(ctx context.Context, wg *sync.WaitGroup, mqttClient mqt
 		case <-ctx.Done():
 			return
 		case <-time.After(15 * time.Second):
-			topic := fmt.Sprintf("/devices/%s/events/mission-state", *deviceID)
+			topic := fmt.Sprintf("/devices/%s/events/mission-state", deviceID)
 			msg := missionEvent{
 				MissionSlug: missionSlug,
 				Timestamp:   time.Now().UTC(),
@@ -321,19 +332,19 @@ func publishMissionState(ctx context.Context, wg *sync.WaitGroup, mqttClient mqt
 	}
 }
 
-func startCommandHandlers(ctx context.Context, wg *sync.WaitGroup, mqttClient mqtt.Client, node *ros.Node) {
+func StartCommandHandlers(ctx context.Context, wg *sync.WaitGroup, mqttClient mqtt.Client, node *ros2.Node, deviceID string) {
 
 	controlCommands := make(chan string)
 	missionCommands := make(chan string)
 	gstreamerCommands := make(chan string)
 
-	go handleControlCommands(ctx, wg, mqttClient, node, controlCommands)
+	go handleControlCommands(ctx, wg, mqttClient, node, controlCommands, deviceID)
 	go handleMissionCommands(ctx, wg, node, missionCommands)
 	go handleGstreamerCommands(ctx, wg, node, gstreamerCommands)
-	go publishMissionState(ctx, wg, mqttClient)
+	go publishMissionState(ctx, wg, mqttClient, deviceID)
 
 	log.Printf("Subscribing to MQTT commands")
-	commandTopic := fmt.Sprintf("/devices/%s/commands/", *deviceID)
+	commandTopic := fmt.Sprintf("/devices/%s/commands/", deviceID)
 	token := mqttClient.Subscribe(fmt.Sprintf("%v#", commandTopic), 0, func(client mqtt.Client, msg mqtt.Message) {
 		subfolder := strings.TrimPrefix(msg.Topic(), commandTopic)
 		switch subfolder {
@@ -355,7 +366,7 @@ func startCommandHandlers(ctx context.Context, wg *sync.WaitGroup, mqttClient mq
 	}
 
 	// Latest config received on startup
-	configTopic := fmt.Sprintf("/devices/%s/config", *deviceID)
+	configTopic := fmt.Sprintf("/devices/%s/config", deviceID)
 	configToken := mqttClient.Subscribe(configTopic, 0, func(client mqtt.Client, msg mqtt.Message) {
 		log.Printf("Got config: %v", string(msg.Payload()))
 	})
@@ -363,11 +374,11 @@ func startCommandHandlers(ctx context.Context, wg *sync.WaitGroup, mqttClient mq
 		log.Fatalf("Error on subscribe: %v", err)
 	}
 
-	publishDeviceState(ctx, mqttClient)
+	publishDeviceState(ctx, mqttClient, deviceID)
 }
 
-func publishDeviceState(ctx context.Context, mqttClient mqtt.Client) {
-	topic := fmt.Sprintf("/devices/%s/state", *deviceID)
+func publishDeviceState(ctx context.Context, mqttClient mqtt.Client, deviceID string) {
+	topic := fmt.Sprintf("/devices/%s/state", deviceID)
 	msg := deviceState{
 		StartedAt: time.Now().UTC(),
 		Message:   "hello world",

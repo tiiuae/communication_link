@@ -15,8 +15,10 @@ import (
 
 	jwt "github.com/dgrijalva/jwt-go"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	ros "github.com/tiiuae/communication_link/communicationlink/ros"
-	types "github.com/tiiuae/communication_link/communicationlink/types"
+	"github.com/tiiuae/communication_link/communicationlink/commands"
+	"github.com/tiiuae/communication_link/communicationlink/ros2app"
+	"github.com/tiiuae/communication_link/communicationlink/telemetry"
+	"github.com/tiiuae/rclgo/pkg/ros2"
 )
 
 const (
@@ -45,34 +47,69 @@ const (
 func main() {
 	deafultFlagSet.Parse(os.Args[1:])
 
-	// attach sigint & sigterm listeners
 	terminationSignals := make(chan os.Signal, 1)
 	signal.Notify(terminationSignals, syscall.SIGINT, syscall.SIGTERM)
-
-	// quitFunc will be called when process is terminated
 	ctx, quitFunc := context.WithCancel(context.Background())
-
-	// wait group will make sure all goroutines have time to clean up
 	var wg sync.WaitGroup
 
+	// Setup MQTT
 	mqttClient := newMQTTClient()
 	defer mqttClient.Disconnect(1000)
 
-	localNode := ros.InitRosNode(*deviceID, "communication_link")
-	defer localNode.ShutdownRosNode()
-	fleetNode := ros.InitRosNode("fleet", "communication_link")
-	defer fleetNode.ShutdownRosNode()
+	// Setup ROS nodes
+	rclArgs, rclErr := ros2.NewRCLArgs("")
+	if rclErr != nil {
+		log.Fatal(rclErr)
+	}
 
-	startTelemetry(ctx, &wg, mqttClient, localNode, fleetNode)
-	startCommandHandlers(ctx, &wg, mqttClient, localNode)
-	publishDefaultMesh(ctx, mqttClient, localNode)
+	rclContext, rclErr := ros2.NewContext(&wg, 0, rclArgs)
+	if rclErr != nil {
+		log.Fatal(rclErr)
+	}
+	defer rclContext.Close()
+
+	rclLocalNode, rclErr := rclContext.NewNode("communicationlink_local", *deviceID)
+	if rclErr != nil {
+		log.Fatal(rclErr)
+	}
+
+	rclFleetNode, rclErr := rclContext.NewNode("communicationlink_fleet", "fleet")
+	if rclErr != nil {
+		log.Fatal(rclErr)
+	}
+
+	localSubs := ros2app.NewSubscriptions(rclContext, rclLocalNode)
+	fleetSubs := ros2app.NewSubscriptions(rclContext, rclFleetNode)
+
+	// Setup telemetry
+	telemetry.RegisterLocalSubscriptions(localSubs, ctx, mqttClient, *deviceID)
+	telemetry.RegisterFleetSubscriptions(fleetSubs, ctx, mqttClient)
+
+	waitSet1, err := localSubs.Subscribe()
+	if err != nil {
+		log.Fatal(rclErr)
+	}
+
+	waitSet2, err := fleetSubs.Subscribe()
+	if err != nil {
+		log.Fatal(rclErr)
+	}
+
+	waitSet1.RunGoroutine(ctx)
+	waitSet2.RunGoroutine(ctx)
+	telemetry.Start(ctx, &wg, mqttClient, *deviceID)
+
+	// Setup commandhandlers
+	commands.StartCommandHandlers(ctx, &wg, mqttClient, rclLocalNode, *deviceID)
+
+	// Setup mesh
+	publishDefaultMesh(ctx, mqttClient, rclLocalNode)
 
 	// wait for termination and close quit to signal all
 	<-terminationSignals
 	// cancel the main context
-	log.Printf("Shuttding down..")
+	log.Printf("Shutting down..")
 	quitFunc()
-
 	// wait until goroutines have done their cleanup
 	log.Printf("Waiting for routines to finish..")
 	wg.Wait()
@@ -159,8 +196,8 @@ func newMQTTClient() mqtt.Client {
 	return client
 }
 
-func publishDefaultMesh(ctx context.Context, mqttClient mqtt.Client, node *ros.Node) {
-	pub := node.InitPublisher("mesh_parameters", "std_msgs/msg/String", (*types.String)(nil))
+func publishDefaultMesh(ctx context.Context, mqttClient mqtt.Client, node *ros2.Node) {
+	pub := ros2app.NewPublisher(node, "mesh_parameters", "std_msgs/String")
 
 	text, err := ioutil.ReadFile("./default_mesh.json")
 	if err != nil {
@@ -168,7 +205,5 @@ func publishDefaultMesh(ctx context.Context, mqttClient mqtt.Client, node *ros.N
 		return
 	}
 
-	pub.DoPublish(types.GenerateString(string(text)))
-
-	pub.Finish()
+	pub.Publish(ros2app.CreateString(string(text)))
 }
