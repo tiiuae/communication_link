@@ -5,9 +5,14 @@ import (
 	"log"
 	"time"
 
-	"github.com/tiiuae/communication_link/missionengine/ros"
 	"github.com/tiiuae/communication_link/missionengine/types"
-	rosTypes "github.com/tiiuae/communication_link/missionengine/types"
+	"github.com/tiiuae/rclgo/pkg/ros2"
+	builtin_interfaces "github.com/tiiuae/rclgo/pkg/ros2/msgs/builtin_interfaces/msg"
+	geometry_msgs "github.com/tiiuae/rclgo/pkg/ros2/msgs/geometry_msgs/msg"
+	nav_msgs "github.com/tiiuae/rclgo/pkg/ros2/msgs/nav_msgs/msg"
+	std_msgs "github.com/tiiuae/rclgo/pkg/ros2/msgs/std_msgs/msg"
+
+	"github.com/tiiuae/rclgo/pkg/ros2/ros2types"
 )
 
 const (
@@ -159,7 +164,7 @@ func (s *worldState) handleExecutePredefinedToTaskCreated(msg ExecutePredefinedT
 	return s.createTasksAssigned()
 }
 
-func (s *worldState) handleTasksAssigned(msg TasksAssigned, pubPath *ros.Publisher, pubMavlink *ros.Publisher) []types.Message {
+func (s *worldState) handleTasksAssigned(msg TasksAssigned, pubPath *ros2.Publisher, pubMavlink *ros2.Publisher) []types.Message {
 	tasksChanged := false
 	for droneName, tasks := range msg.Tasks {
 		// Fleet tasks
@@ -235,28 +240,46 @@ func tasksEqual(t1 []*myTask, t2 []*myTask) bool {
 	return true
 }
 
-func generatePoints(tasks []*myTask) []rosTypes.Point {
-	points := make([]rosTypes.Point, 0)
+func generatePoints(tasks []*myTask) []geometry_msgs.Point {
+
+	points := make([]geometry_msgs.Point, 0)
 	for _, t := range tasks {
 		for _, p := range t.Path {
-			points = append(points, rosTypes.Point{X: p.X, Y: p.Y, Z: p.Z})
+			points = append(points, geometry_msgs.Point{X: p.X, Y: p.Y, Z: p.Z})
 		}
 	}
 
 	return points
 }
 
-func sendFlyToMessages(points []rosTypes.Point, pubPath *ros.Publisher, pubMavlink *ros.Publisher) {
+func sendFlyToMessages(points []geometry_msgs.Point, pubPath *ros2.Publisher, pubMavlink *ros2.Publisher) {
 	if len(points) == 0 {
 		return
 	}
 
-	path := rosTypes.NewPath(points)
-	pubPath.DoPublish(path)
+	path := nav_msgs.NewPath()
+	path.Header = *std_msgs.NewHeader()
+	path.Header.Stamp = *builtin_interfaces.NewTime()
+	path.Header.Stamp.Sec = 10000
+	path.Header.Stamp.Nanosec = 100000
+	path.Header.FrameId = "map"
+	path.Poses = make([]geometry_msgs.PoseStamped, len(points))
+	for i, p := range points {
+		pose := geometry_msgs.NewPoseStamped()
+		pose.Header = *std_msgs.NewHeader()
+		pose.Header.Stamp = *builtin_interfaces.NewTime()
+		pose.Header.Stamp.Sec = 10000
+		pose.Header.Stamp.Nanosec = 100000
+		pose.Header.FrameId = "map"
+		pose.Pose.Position = p
+		path.Poses[i] = *pose
+	}
+
+	pubPath.Publish(path)
 
 	time.Sleep(time.Duration(len(points)*100) * time.Millisecond)
 
-	pubMavlink.DoPublish(rosTypes.GenerateString("start_mission"))
+	pubMavlink.Publish(createString("start_mission"))
 }
 
 func (s *worldState) handleTaskCompleted(msg TaskCompleted) []types.Message {
@@ -274,7 +297,7 @@ func (s *worldState) handleTaskCompleted(msg TaskCompleted) []types.Message {
 	return []types.Message{}
 }
 
-func (s *worldState) handleMissionResult(msg MissionResult, pubMavlink *ros.Publisher) []types.Message {
+func (s *worldState) handleMissionResult(msg MissionResult, pubMavlink *ros2.Publisher) []types.Message {
 	// InstanceCount usually starts from 2 and increments by 1 every time a new path is sent
 	if s.MissionInstance == -1 {
 		log.Printf("Mission instance count initialized: %v", msg.InstanceCount)
@@ -304,7 +327,7 @@ func (s *worldState) handleMissionResult(msg MissionResult, pubMavlink *ros.Publ
 					t.Completed = true
 					if ti == len(s.MyTasks)-1 {
 						// this is the last task in the drone -> make the drone land
-						pubMavlink.DoPublish(rosTypes.GenerateString("land"))
+						pubMavlink.Publish(createString("land"))
 					}
 				}
 			}
@@ -449,4 +472,10 @@ func deserialize(jsonString string, i interface{}) {
 	if err != nil {
 		panic(err)
 	}
+}
+
+func createString(value string) ros2types.ROS2Msg {
+	rosmsg := std_msgs.NewString()
+	rosmsg.Data.SetDefaults(value)
+	return rosmsg
 }

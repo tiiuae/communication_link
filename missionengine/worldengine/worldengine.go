@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"log"
 
-	"github.com/tiiuae/communication_link/missionengine/ros"
 	"github.com/tiiuae/communication_link/missionengine/types"
+	"github.com/tiiuae/rclgo/pkg/ros2"
 )
 
 type WorldEngine struct {
@@ -16,7 +16,7 @@ func New(me string) *WorldEngine {
 	return &WorldEngine{createState(me)}
 }
 
-func (we *WorldEngine) HandleMessage(msg types.Message, pubPath *ros.Publisher, pubMavlink *ros.Publisher) []types.Message {
+func (we *WorldEngine) HandleMessage(msg types.Message, pubPath *ros2.Publisher, pubMavlink *ros2.Publisher) []types.Message {
 	state := we.state
 	outgoing := make([]types.Message, 0)
 	log.Printf("WorldEngine handling: %s (%s -> %s)", msg.MessageType, msg.From, msg.To)

@@ -9,7 +9,7 @@ import (
 	"sync"
 	"syscall"
 
-	ros "github.com/tiiuae/communication_link/missionengine/ros"
+	"github.com/tiiuae/rclgo/pkg/ros2"
 )
 
 var (
@@ -31,13 +31,30 @@ func main() {
 	// wait group will make sure all goroutines have time to clean up
 	var wg sync.WaitGroup
 
-	localNode := ros.InitRosNode(*deviceID, "mission_engine")
-	defer localNode.ShutdownRosNode()
-	fleetNode := ros.InitRosNode("fleet", "mission_engine")
-	defer fleetNode.ShutdownRosNode()
+	// Setup ROS nodes
+	rclArgs, rclErr := ros2.NewRCLArgs("")
+	if rclErr != nil {
+		log.Fatal(rclErr)
+	}
 
-	me := New(ctx, &wg, localNode, fleetNode, *deviceID)
-	startCommandHandlers(ctx, &wg, me, localNode)
+	rclContext, rclErr := ros2.NewContext(&wg, 0, rclArgs)
+	if rclErr != nil {
+		log.Fatal(rclErr)
+	}
+	defer rclContext.Close()
+
+	rclLocalNode, rclErr := rclContext.NewNode("communicationlink_local", *deviceID)
+	if rclErr != nil {
+		log.Fatal(rclErr)
+	}
+
+	rclFleetNode, rclErr := rclContext.NewNode("communicationlink_fleet", "fleet")
+	if rclErr != nil {
+		log.Fatal(rclErr)
+	}
+
+	me := New(ctx, &wg, rclLocalNode, rclFleetNode, *deviceID)
+	startCommandHandlers(ctx, &wg, me, rclLocalNode)
 
 	// wait for termination and close quit to signal all
 	<-terminationSignals

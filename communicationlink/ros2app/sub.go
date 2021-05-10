@@ -16,7 +16,6 @@ type Subscription struct {
 }
 
 type Subscriptions struct {
-	rclContext    *ros2.Context
 	rclNode       *ros2.Node
 	subscriptions []*Subscription
 }
@@ -25,8 +24,8 @@ func (ss *Subscriptions) Add(topicName string, messageType string, subscriptionC
 	ss.subscriptions = append(ss.subscriptions, &Subscription{topicName, messageType, subscriptionCallback})
 }
 
-func NewSubscriptions(rclContext *ros2.Context, rclNode *ros2.Node) *Subscriptions {
-	return &Subscriptions{rclContext, rclNode, make([]*Subscription, 0)}
+func NewSubscriptions(rclNode *ros2.Node) *Subscriptions {
+	return &Subscriptions{rclNode, make([]*Subscription, 0)}
 }
 
 func (ss *Subscriptions) Subscribe(ctx context.Context) error {

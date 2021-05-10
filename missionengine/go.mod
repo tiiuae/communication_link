@@ -2,4 +2,7 @@ module github.com/tiiuae/communication_link/missionengine
 
 go 1.14
 
-require gopkg.in/yaml.v2 v2.4.0
+require (
+	github.com/tiiuae/rclgo v0.0.0-20210510083608-e03df18a8e02 // indirect
+	gopkg.in/yaml.v2 v2.4.0
+)

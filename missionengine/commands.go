@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
-	ros "github.com/tiiuae/communication_link/missionengine/ros"
-	msg "github.com/tiiuae/communication_link/missionengine/types"
 	types "github.com/tiiuae/communication_link/missionengine/types"
+	"github.com/tiiuae/rclgo/pkg/ros2"
+	std_msgs "github.com/tiiuae/rclgo/pkg/ros2/msgs/std_msgs/msg"
 )
 
 type JoinMission struct {
@@ -18,7 +19,7 @@ type JoinMission struct {
 	MissionSlug      string `json:"mission_slug"`
 }
 
-func startCommandHandlers(ctx context.Context, wg *sync.WaitGroup, me *MissionEngine, node *ros.Node) {
+func startCommandHandlers(ctx context.Context, wg *sync.WaitGroup, me *MissionEngine, node *ros2.Node) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -26,25 +27,35 @@ func startCommandHandlers(ctx context.Context, wg *sync.WaitGroup, me *MissionEn
 	}()
 }
 
-func handleCommands(ctx context.Context, me *MissionEngine, node *ros.Node) {
-	messages := make(chan types.String)
-	log.Printf("Creating subscriber for %s", "missions")
-	sub := node.InitSubscriber(messages, "missions", "std_msgs/msg/String")
-	go sub.DoSubscribe(ctx)
-	for m := range messages {
-		str := m.GetString()
-		var msg msg.Message
-		err := json.Unmarshal([]byte(str), &msg)
-		if err != nil {
-			log.Printf("Could not unmarshal payload: %v", err)
-			return
-		}
-		handleCommand(msg, me)
+func handleCommands(ctx context.Context, me *MissionEngine, node *ros2.Node) {
+	sub, rclErr := node.NewSubscription("missions", &std_msgs.String{}, func(s *ros2.Subscription) { handleCommand(s, me) })
+	if rclErr != nil {
+		log.Fatalf("Unable to subscribe to topic 'missions': %v", rclErr)
 	}
-	sub.Finish()
+
+	err := sub.Spin(ctx, 30*time.Second)
+	if err != nil {
+		log.Printf("Subscription failed: %v", err)
+	}
 }
 
-func handleCommand(msg msg.Message, me *MissionEngine) {
+func handleCommand(s *ros2.Subscription, me *MissionEngine) {
+	var m std_msgs.String
+	_, rlcErr := s.TakeMessage(&m)
+	if rlcErr != nil {
+		log.Print("TakeMessage failed: handleCommand")
+		return
+	}
+
+	str := fmt.Sprintf("%v", m.Data)
+
+	var msg types.Message
+	err := json.Unmarshal([]byte(str), &msg)
+	if err != nil {
+		log.Printf("Could not unmarshal payload: %v", err)
+		return
+	}
+
 	switch msg.MessageType {
 	case "join-mission":
 		var message JoinMission

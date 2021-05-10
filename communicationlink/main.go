@@ -78,8 +78,8 @@ func main() {
 		log.Fatal(rclErr)
 	}
 
-	localSubs := ros2app.NewSubscriptions(rclContext, rclLocalNode)
-	fleetSubs := ros2app.NewSubscriptions(rclContext, rclFleetNode)
+	localSubs := ros2app.NewSubscriptions(rclLocalNode)
+	fleetSubs := ros2app.NewSubscriptions(rclFleetNode)
 
 	// Setup telemetry
 	telemetry.RegisterLocalSubscriptions(localSubs, ctx, mqttClient, *deviceID)
