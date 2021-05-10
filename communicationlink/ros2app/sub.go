@@ -1,7 +1,8 @@
 package ros2app
 
 import (
-	"time"
+	"context"
+	"log"
 
 	"github.com/pkg/errors"
 	"github.com/tiiuae/rclgo/pkg/ros2"
@@ -28,24 +29,22 @@ func NewSubscriptions(rclContext *ros2.Context, rclNode *ros2.Node) *Subscriptio
 	return &Subscriptions{rclContext, rclNode, make([]*Subscription, 0)}
 }
 
-func (ss *Subscriptions) Subscribe() (*ros2.WaitSet, error) {
-	subs := make([]*ros2.Subscription, 0)
+func (ss *Subscriptions) Subscribe(ctx context.Context) error {
 	for _, s := range ss.subscriptions {
 		ros2msg, ok := ros2_type_dispatcher.TranslateROS2MsgTypeNameToType(s.MessageType)
 		if !ok {
-			return nil, errors.Errorf("Unable to map message type: %s", s.MessageType)
+			return errors.Errorf("Unable to map message type: %s", s.MessageType)
 		}
 		sub, err := ss.rclNode.NewSubscription(s.TopicName, ros2msg.Clone(), s.Handler)
 		if err != nil {
-			return nil, errors.WithMessagef(err, "Unable to subscribe to topic %s", s.TopicName)
+			return errors.WithMessagef(err, "Unable to subscribe to topic %s", s.TopicName)
 		}
-		subs = append(subs, sub)
+
+		go func() {
+			err := sub.Spin(ctx)
+			log.Printf("Subscription failed: %v", err)
+		}()
 	}
 
-	waitSet, err := ss.rclContext.NewWaitSet(subs, nil, 1000*time.Millisecond)
-	if err != nil {
-		return nil, errors.WithMessage(err, "Unable to create WaitSet")
-	}
-
-	return waitSet, nil
+	return nil
 }

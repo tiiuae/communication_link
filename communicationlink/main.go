@@ -85,18 +85,16 @@ func main() {
 	telemetry.RegisterLocalSubscriptions(localSubs, ctx, mqttClient, *deviceID)
 	telemetry.RegisterFleetSubscriptions(fleetSubs, ctx, mqttClient)
 
-	waitSet1, err := localSubs.Subscribe()
+	err := localSubs.Subscribe(ctx)
 	if err != nil {
-		log.Fatal(rclErr)
+		log.Fatal(err)
 	}
 
-	waitSet2, err := fleetSubs.Subscribe()
+	err = fleetSubs.Subscribe(ctx)
 	if err != nil {
-		log.Fatal(rclErr)
+		log.Fatal(err)
 	}
 
-	waitSet1.RunGoroutine(ctx)
-	waitSet2.RunGoroutine(ctx)
 	telemetry.Start(ctx, &wg, mqttClient, *deviceID)
 
 	// Setup commandhandlers
