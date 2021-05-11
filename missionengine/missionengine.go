@@ -92,19 +92,43 @@ func runMessageLoop(ctx context.Context, wg *sync.WaitGroup, we *worldengine.Wor
 		select {
 		case <-ctx.Done():
 			return
-		case m := <-ch:
-			log.Printf("Message received: %s: %s", m.MessageType, m.Message)
-			messagesOut := we.HandleMessage(m, pubpath, pubmavlink)
-			for _, r := range messagesOut {
-				log.Printf("Message out: %v", r)
-				b, err := json.Marshal(r)
-				if err != nil {
-					panic("Unable to marshal missionengine message")
+		case msgIn := <-ch:
+			log.Printf("Message received: %s: %s", msgIn.MessageType, msgIn.Message)
+			messagesOut := we.HandleMessage(msgIn, pubpath, pubmavlink)
+			for _, msgOut := range messagesOut {
+				switch m := msgOut.Message.(type) {
+				case worldengine.FlightPath:
+					path := createPath(m)
+					pubpath.Publish(path)
+				case worldengine.StartMission:
+					go func() {
+						time.Sleep(m.Delay)
+						pubmavlink.Publish(createString("start_mission"))
+					}()
+				case []*worldengine.FlightPlan:
+					publishFleetMessage(pub, msgOut)
+				case []*worldengine.MissionPlan:
+					publishFleetMessage(pub, msgOut)
+				case worldengine.TasksAssigned:
+					publishFleetMessage(pub, msgOut)
+				case worldengine.TaskCompleted:
+					publishFleetMessage(pub, msgOut)
+				default:
+					log.Fatalf("Unkown message type: %T", msgOut.Message)
 				}
-				pub.Publish(createString(string(b)))
 			}
 		}
 	}
+}
+
+func publishFleetMessage(pub *ros2.Publisher, msgOut msg.MessageOut) {
+	m := msg.CreateMessage(msgOut)
+	log.Printf("Message out: %v", m)
+	b, err := json.Marshal(m)
+	if err != nil {
+		panic("Unable to marshal missionengine message")
+	}
+	pub.Publish(createString(string(b)))
 }
 
 func runGitTransport(ctx context.Context, wg *sync.WaitGroup, gt *gittransport.GitEngine, ch chan<- msg.Message, gitPull <-chan struct{}, droneName string) {
@@ -151,7 +175,7 @@ func runMissionEngineSubscriber(ctx context.Context, wg *sync.WaitGroup, ch chan
 		log.Fatalf("Unable to subscribe to topic 'missions': %v", rclErr)
 	}
 
-	err := sub.Spin(ctx, 30*time.Second)
+	err := sub.Spin(ctx, 5*time.Second)
 	if err != nil {
 		log.Printf("Subscription failed: %v", err)
 	}
@@ -187,7 +211,7 @@ func runMissionResultSubscriber(ctx context.Context, wg *sync.WaitGroup, ch chan
 		log.Fatalf("Unable to subscribe to topic 'missions': %v", rclErr)
 	}
 
-	err := sub.Spin(ctx, 30*time.Second)
+	err := sub.Spin(ctx, 5*time.Second)
 	if err != nil {
 		log.Printf("Subscription failed: %v", err)
 	}

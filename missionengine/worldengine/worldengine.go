@@ -2,7 +2,7 @@ package worldengine
 
 import (
 	"encoding/json"
-	"log"
+	"time"
 
 	"github.com/tiiuae/communication_link/missionengine/types"
 	"github.com/tiiuae/rclgo/pkg/ros2"
@@ -16,10 +16,9 @@ func New(me string) *WorldEngine {
 	return &WorldEngine{createState(me)}
 }
 
-func (we *WorldEngine) HandleMessage(msg types.Message, pubPath *ros2.Publisher, pubMavlink *ros2.Publisher) []types.Message {
+func (we *WorldEngine) HandleMessage(msg types.Message, pubPath *ros2.Publisher, pubMavlink *ros2.Publisher) []types.MessageOut {
 	state := we.state
-	outgoing := make([]types.Message, 0)
-	log.Printf("WorldEngine handling: %s (%s -> %s)", msg.MessageType, msg.From, msg.To)
+	outgoing := make([]types.MessageOut, 0)
 	if msg.MessageType == "drone-added" {
 		var message DroneAdded
 		json.Unmarshal([]byte(msg.Message), &message)
@@ -135,4 +134,12 @@ type MissionResult struct {
 	ItemChangedIndex    uint16 // indicate which item has changed
 	ItemDoJumpRemaining uint16 // set to the number of do jumps remaining for that item
 	ExecutionMode       uint8  // indicates the mode in which the mission is executed
+}
+
+type FlightPath struct {
+	Points []Point
+}
+
+type StartMission struct {
+	Delay time.Duration
 }

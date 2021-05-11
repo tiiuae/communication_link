@@ -1,22 +1,20 @@
 package worldengine
 
 import (
-	"encoding/json"
 	"log"
 	"time"
 
 	"github.com/tiiuae/communication_link/missionengine/types"
 	"github.com/tiiuae/rclgo/pkg/ros2"
-	builtin_interfaces "github.com/tiiuae/rclgo/pkg/ros2/msgs/builtin_interfaces/msg"
-	geometry_msgs "github.com/tiiuae/rclgo/pkg/ros2/msgs/geometry_msgs/msg"
-	nav_msgs "github.com/tiiuae/rclgo/pkg/ros2/msgs/nav_msgs/msg"
 	std_msgs "github.com/tiiuae/rclgo/pkg/ros2/msgs/std_msgs/msg"
 
 	"github.com/tiiuae/rclgo/pkg/ros2/ros2types"
 )
 
 const (
-	BACKLOG_ITEM_STATUS_COMPLETED = "completed"
+	BACKLOG_ITEM_STATUS_COMPLETED  = "completed"
+	BACKLOG_ITEM_STATUS_ASSIGNED   = "assigned"
+	BACKLOG_ITEM_STATUS_UNASSIGNED = "unassigned"
 )
 
 type Drones map[string]*droneState
@@ -57,13 +55,16 @@ type taskPoint struct {
 }
 
 type backlogItem struct {
-	ID     string
-	Status string
-	Type   string
-	Drone  string
-	X      float64
-	Y      float64
-	Z      float64
+	// Task definition
+	ID    string
+	Type  string
+	Drone string
+	X     float64
+	Y     float64
+	Z     float64
+	// Runtime status
+	Status     string
+	AssignedTo string
 }
 
 func createState(me string) *worldState {
@@ -77,30 +78,32 @@ func createState(me string) *worldState {
 	}
 }
 
-func (s *worldState) handleDroneAdded(msg DroneAdded) []types.Message {
+func (s *worldState) handleDroneAdded(msg DroneAdded) []types.MessageOut {
 	name := msg.Name
 	isLeader := len(s.Drones) == 0
 	if isLeader {
 		s.LeaderName = name
 	}
+
+	// TODO: GetOrCreate
 	s.Drones[name] = &droneState{name, []*fleetTask{}}
 
 	// Done if not leader
 	if s.LeaderName != s.MyName {
-		return []types.Message{}
+		return []types.MessageOut{}
 	}
 
 	if len(s.Backlog) == 0 {
-		return []types.Message{}
+		return []types.MessageOut{}
 	}
 
 	// Re-assign tasks
 	return s.createTasksAssigned()
 }
 
-func (s *worldState) handleDroneRemoved(msg DroneRemoved) []types.Message {
+func (s *worldState) handleDroneRemoved(msg DroneRemoved) []types.MessageOut {
 	if msg.Name == s.MyName {
-		return []types.Message{}
+		return []types.MessageOut{}
 	}
 
 	delete(s.Drones, msg.Name)
@@ -111,22 +114,22 @@ func (s *worldState) handleDroneRemoved(msg DroneRemoved) []types.Message {
 
 	// Done if not leader
 	if s.LeaderName != s.MyName {
-		return []types.Message{}
+		return []types.MessageOut{}
 	}
 
 	if len(s.Backlog) == 0 {
-		return []types.Message{}
+		return []types.MessageOut{}
 	}
 
 	// Re-assign tasks
 	return s.createTasksAssigned()
 }
 
-func (s *worldState) handleFlyToTaskCreated(msg FlyToTaskCreated) []types.Message {
+func (s *worldState) handleFlyToTaskCreated(msg FlyToTaskCreated) []types.MessageOut {
 	// Add task to backlog
 	bi := backlogItem{
 		ID:     msg.ID,
-		Status: "",
+		Status: BACKLOG_ITEM_STATUS_UNASSIGNED,
 		Type:   msg.Type,
 		Drone:  "",
 		X:      msg.Payload.X,
@@ -137,17 +140,17 @@ func (s *worldState) handleFlyToTaskCreated(msg FlyToTaskCreated) []types.Messag
 
 	// Done if not leader
 	if s.LeaderName != s.MyName {
-		return []types.Message{}
+		return []types.MessageOut{}
 	}
 
 	return s.createTasksAssigned()
 }
 
-func (s *worldState) handleExecutePredefinedToTaskCreated(msg ExecutePredefinedTaskCreated) []types.Message {
+func (s *worldState) handleExecutePredefinedToTaskCreated(msg ExecutePredefinedTaskCreated) []types.MessageOut {
 	// Add task to backlog
 	bi := backlogItem{
 		ID:     msg.ID,
-		Status: "",
+		Status: BACKLOG_ITEM_STATUS_UNASSIGNED,
 		Type:   msg.Type,
 		Drone:  msg.Payload.Drone,
 		X:      0,
@@ -158,16 +161,17 @@ func (s *worldState) handleExecutePredefinedToTaskCreated(msg ExecutePredefinedT
 
 	// Done if not leader
 	if s.LeaderName != s.MyName {
-		return []types.Message{}
+		return []types.MessageOut{}
 	}
 
 	return s.createTasksAssigned()
 }
 
-func (s *worldState) handleTasksAssigned(msg TasksAssigned, pubPath *ros2.Publisher, pubMavlink *ros2.Publisher) []types.Message {
+func (s *worldState) handleTasksAssigned(msg TasksAssigned, pubPath *ros2.Publisher, pubMavlink *ros2.Publisher) []types.MessageOut {
 	tasksChanged := false
 	for droneName, tasks := range msg.Tasks {
 		// Fleet tasks
+		// TODO: GetOrCreate
 		drone := s.Drones[droneName]
 		drone.Tasks = make([]*fleetTask, 0)
 		for _, t := range tasks {
@@ -181,17 +185,17 @@ func (s *worldState) handleTasksAssigned(msg TasksAssigned, pubPath *ros2.Publis
 		}
 	}
 
+	result := make([]types.MessageOut, 0)
+
 	if tasksChanged {
 		// Send PX4 path messages
 		if s.MissionInstance > -1 {
 			s.MissionInstance++
 		}
-		sendFlyToMessages(generatePoints(s.MyTasks), pubPath, pubMavlink)
+		result = append(result, s.createFlyToMessages(generatePoints(s.MyTasks))...)
 	} else {
 		log.Println("Task assigment not changed -> skipping")
 	}
-
-	result := make([]types.Message, 0)
 
 	// Leader posts fleets mission plan
 	if s.LeaderName == s.MyName {
@@ -240,49 +244,39 @@ func tasksEqual(t1 []*myTask, t2 []*myTask) bool {
 	return true
 }
 
-func generatePoints(tasks []*myTask) []geometry_msgs.Point {
-
-	points := make([]geometry_msgs.Point, 0)
+func generatePoints(tasks []*myTask) []Point {
+	points := make([]Point, 0)
 	for _, t := range tasks {
 		for _, p := range t.Path {
-			points = append(points, geometry_msgs.Point{X: p.X, Y: p.Y, Z: p.Z})
+			points = append(points, Point{X: p.X, Y: p.Y, Z: p.Z})
 		}
 	}
 
 	return points
 }
 
-func sendFlyToMessages(points []geometry_msgs.Point, pubPath *ros2.Publisher, pubMavlink *ros2.Publisher) {
-	if len(points) == 0 {
-		return
+func (s *worldState) createFlyToMessages(points []Point) []types.MessageOut {
+	return []types.MessageOut{
+		{
+			Timestamp:   time.Now().UTC(),
+			From:        s.MyName,
+			To:          s.MyName,
+			ID:          "id1",
+			MessageType: "flight-path",
+			Message:     FlightPath{points},
+		},
+		{
+			Timestamp:   time.Now().UTC(),
+			From:        s.MyName,
+			To:          s.MyName,
+			ID:          "id1",
+			MessageType: "start-mission",
+			Message:     StartMission{Delay: time.Duration(len(points)*100) * time.Millisecond},
+		},
 	}
-
-	path := nav_msgs.NewPath()
-	path.Header = *std_msgs.NewHeader()
-	path.Header.Stamp = *builtin_interfaces.NewTime()
-	path.Header.Stamp.Sec = 10000
-	path.Header.Stamp.Nanosec = 100000
-	path.Header.FrameId = "map"
-	path.Poses = make([]geometry_msgs.PoseStamped, len(points))
-	for i, p := range points {
-		pose := geometry_msgs.NewPoseStamped()
-		pose.Header = *std_msgs.NewHeader()
-		pose.Header.Stamp = *builtin_interfaces.NewTime()
-		pose.Header.Stamp.Sec = 10000
-		pose.Header.Stamp.Nanosec = 100000
-		pose.Header.FrameId = "map"
-		pose.Pose.Position = p
-		path.Poses[i] = *pose
-	}
-
-	pubPath.Publish(path)
-
-	time.Sleep(time.Duration(len(points)*100) * time.Millisecond)
-
-	pubMavlink.Publish(createString("start_mission"))
 }
 
-func (s *worldState) handleTaskCompleted(msg TaskCompleted) []types.Message {
+func (s *worldState) handleTaskCompleted(msg TaskCompleted) []types.MessageOut {
 	for _, bi := range s.Backlog {
 		if bi.ID == msg.ID {
 			bi.Status = BACKLOG_ITEM_STATUS_COMPLETED
@@ -291,31 +285,31 @@ func (s *worldState) handleTaskCompleted(msg TaskCompleted) []types.Message {
 	}
 
 	if s.LeaderName == s.MyName {
-		return []types.Message{s.createMissionPlan()}
+		return []types.MessageOut{s.createMissionPlan()}
 	}
 
-	return []types.Message{}
+	return []types.MessageOut{}
 }
 
-func (s *worldState) handleMissionResult(msg MissionResult, pubMavlink *ros2.Publisher) []types.Message {
+func (s *worldState) handleMissionResult(msg MissionResult, pubMavlink *ros2.Publisher) []types.MessageOut {
 	// InstanceCount usually starts from 2 and increments by 1 every time a new path is sent
 	if s.MissionInstance == -1 {
 		log.Printf("Mission instance count initialized: %v", msg.InstanceCount)
 		s.MissionInstance = msg.InstanceCount
 	} else if s.MissionInstance != int(msg.InstanceCount) {
 		log.Printf("Mission instance count mismatch, expected: %v, given: %v", s.MissionInstance, msg.InstanceCount)
-		return []types.Message{}
+		return []types.MessageOut{}
 	}
 
 	// SeqReached: -1, 0, ... N
 	// 2 = point-1 reached, 5 = point-2 reached...
 	if !(msg.SeqReached > 0 && msg.SeqReached%3 == 2) {
-		return []types.Message{}
+		return []types.MessageOut{}
 	}
 
 	pathIndex := msg.SeqReached / 3
 	currentIndex := 0
-	result := make([]types.Message, 0)
+	result := make([]types.MessageOut, 0)
 	for ti, t := range s.MyTasks {
 		for pi, p := range t.Path {
 			if currentIndex <= pathIndex {
@@ -341,49 +335,58 @@ func (s *worldState) handleMissionResult(msg MissionResult, pubMavlink *ros2.Pub
 	return result
 }
 
-func (s *worldState) createTaskCompleted(id string) types.Message {
-	msg := serialize(TaskCompleted{id})
-	return types.Message{
+func (s *worldState) createTaskCompleted(id string) types.MessageOut {
+	return types.MessageOut{
 		Timestamp:   time.Now().UTC(),
 		From:        s.MyName,
 		To:          "*",
 		ID:          "id1",
 		MessageType: "task-completed",
-		Message:     msg,
+		Message:     TaskCompleted{id},
 	}
 }
 
-func (s *worldState) createFlightPlan() types.Message {
+func (s *worldState) createFlightPlan() types.MessageOut {
 	points := make([]*FlightPlan, 0)
 	for _, t := range s.MyTasks {
 		for _, p := range t.Path {
 			points = append(points, &FlightPlan{Reached: p.Reached, X: p.X, Y: p.Y, Z: p.Z})
 		}
 	}
-	msg := serialize(points)
-	return types.Message{
+	return types.MessageOut{
 		Timestamp:   time.Now().UTC(),
 		From:        s.MyName,
 		To:          "*",
 		ID:          "id1",
 		MessageType: "flight-plan",
-		Message:     msg,
+		Message:     points,
 	}
 }
 
-func (s *worldState) createTasksAssigned() []types.Message {
+func (s *worldState) createTasksAssigned() []types.MessageOut {
 	drones := s.Drones.names()
 	result := TasksAssigned{
 		Tasks: make(map[string][]*TaskAssignment),
 	}
 	for i, bi := range s.Backlog {
+		// Skip completed tasks
 		if bi.Status == BACKLOG_ITEM_STATUS_COMPLETED {
 			continue
 		}
-		drone := drones[i%len(drones)]
-		if bi.Drone != "" {
-			drone = bi.Drone
+
+		// Assign unassigned tasks
+		if bi.Status == BACKLOG_ITEM_STATUS_UNASSIGNED {
+			if bi.Drone != "" {
+				// Target drone from task parameters
+				bi.AssignedTo = bi.Drone
+			} else {
+				// Random selection
+				bi.AssignedTo = drones[i%len(drones)]
+			}
+
+			bi.Status = BACKLOG_ITEM_STATUS_ASSIGNED
 		}
+
 		task := TaskAssignment{
 			Type: bi.Type,
 			ID:   bi.ID,
@@ -392,47 +395,46 @@ func (s *worldState) createTasksAssigned() []types.Message {
 			Z:    bi.Z,
 		}
 
-		result.Tasks[drone] = append(result.Tasks[drone], &task)
+		result.Tasks[bi.AssignedTo] = append(result.Tasks[bi.AssignedTo], &task)
 	}
 
-	msg := serialize(result)
-	return []types.Message{
+	return []types.MessageOut{
 		{
 			Timestamp:   time.Now().UTC(),
 			From:        s.MyName,
 			To:          "*",
 			ID:          "id1",
 			MessageType: "tasks-assigned",
-			Message:     msg,
+			Message:     result,
 		},
 	}
 }
 
-func (s *worldState) createMissionPlan() types.Message {
+func (s *worldState) createMissionPlan() types.MessageOut {
 	result := make([]*MissionPlan, 0)
 	for _, bi := range s.Backlog {
 		mp := &MissionPlan{
 			ID:         bi.ID,
-			AssignedTo: "",
+			AssignedTo: bi.AssignedTo,
 			Status:     bi.Status,
 		}
-		for _, d := range s.Drones {
-			for _, t := range d.Tasks {
-				if t.ID == bi.ID {
-					mp.AssignedTo = d.Name
-				}
-			}
-		}
+		// for _, d := range s.Drones {
+		// 	for _, t := range d.Tasks {
+		// 		if t.ID == bi.ID {
+		// 			mp.AssignedTo = d.Name
+		// 		}
+		// 	}
+		// }
 		result = append(result, mp)
 	}
 
-	return types.Message{
+	return types.MessageOut{
 		Timestamp:   time.Now().UTC(),
 		From:        s.MyName,
 		To:          "*",
 		ID:          "id1",
 		MessageType: "mission-plan",
-		Message:     serialize(result),
+		Message:     result,
 	}
 }
 
@@ -458,21 +460,21 @@ func smallestString(values []string) string {
 	return result
 }
 
-func serialize(i interface{}) string {
-	b, err := json.Marshal(i)
-	if err != nil {
-		panic(err)
-	}
+// func serialize(i interface{}) string {
+// 	b, err := json.Marshal(i)
+// 	if err != nil {
+// 		panic(err)
+// 	}
 
-	return string(b)
-}
+// 	return string(b)
+// }
 
-func deserialize(jsonString string, i interface{}) {
-	err := json.Unmarshal([]byte(jsonString), i)
-	if err != nil {
-		panic(err)
-	}
-}
+// func deserialize(jsonString string, i interface{}) {
+// 	err := json.Unmarshal([]byte(jsonString), i)
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// }
 
 func createString(value string) ros2types.ROS2Msg {
 	rosmsg := std_msgs.NewString()

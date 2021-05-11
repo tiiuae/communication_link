@@ -33,7 +33,7 @@ func handleCommands(ctx context.Context, me *MissionEngine, node *ros2.Node) {
 		log.Fatalf("Unable to subscribe to topic 'missions': %v", rclErr)
 	}
 
-	err := sub.Spin(ctx, 30*time.Second)
+	err := sub.Spin(ctx, 5*time.Second)
 	if err != nil {
 		log.Printf("Subscription failed: %v", err)
 	}
