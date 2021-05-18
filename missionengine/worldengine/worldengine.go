@@ -2,6 +2,7 @@ package worldengine
 
 import (
 	"encoding/json"
+	"log"
 	"time"
 
 	"github.com/tiiuae/communication_link/missionengine/types"
@@ -9,16 +10,31 @@ import (
 )
 
 type WorldEngine struct {
+	me    string
 	state *worldState
 }
 
 func New(me string) *WorldEngine {
-	return &WorldEngine{createState(me)}
+	return &WorldEngine{me, nil}
 }
 
 func (we *WorldEngine) HandleMessage(msg types.Message, pubPath *ros2.Publisher, pubMavlink *ros2.Publisher) []types.MessageOut {
 	state := we.state
 	outgoing := make([]types.MessageOut, 0)
+	if msg.MessageType == "join-mission" {
+		we.state = createState(we.me)
+		return outgoing
+	}
+	if msg.MessageType == "leave-mission" {
+		we.state = nil
+		return outgoing
+	}
+
+	if we.state == nil {
+		log.Printf("Failed to handle message '%s': no active mission", msg.MessageType)
+		return outgoing
+	}
+
 	if msg.MessageType == "drone-added" {
 		var message DroneAdded
 		json.Unmarshal([]byte(msg.Message), &message)

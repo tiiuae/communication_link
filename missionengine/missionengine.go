@@ -25,22 +25,27 @@ const (
 )
 
 type MissionEngine struct {
-	ctx           context.Context
-	wg            *sync.WaitGroup
-	localNode     *ros2.Node
-	fleetNode     *ros2.Node
-	droneName     string
-	updateBacklog chan struct{}
+	ctx               context.Context
+	wg                *sync.WaitGroup
+	localNode         *ros2.Node
+	fleetNode         *ros2.Node
+	droneName         string
+	updateBacklog     chan struct{}
+	messages          chan msg.Message
+	closeGitTransport context.CancelFunc
 }
 
 func New(ctx context.Context, wg *sync.WaitGroup, localNode *ros2.Node, fleetNode *ros2.Node, droneName string) *MissionEngine {
-	return &MissionEngine{ctx, wg, localNode, fleetNode, droneName, make(chan struct{})}
-}
-
-func (me *MissionEngine) Start(gitServerAddress string, gitServerKey string) {
-	ctx := me.ctx
-	wg := me.wg
-	droneName := me.droneName
+	me := &MissionEngine{
+		ctx:               ctx,
+		wg:                wg,
+		localNode:         localNode,
+		fleetNode:         fleetNode,
+		droneName:         droneName,
+		updateBacklog:     make(chan struct{}),
+		messages:          make(chan msg.Message, 10),
+		closeGitTransport: nil,
+	}
 
 	go func() {
 		defer func() {
@@ -50,21 +55,62 @@ func (me *MissionEngine) Start(gitServerAddress string, gitServerKey string) {
 			}
 		}()
 		log.Printf("Starting mission engine of drone: '%s'", droneName)
-		log.Printf("Running git clone...")
-		gt := gittransport.New(gitServerAddress, gitServerKey, droneName)
 
 		we := worldengine.New(droneName)
 
-		messages := make(chan msg.Message, 10)
-		go runMessageLoop(ctx, wg, we, me.localNode, me.fleetNode, messages)
-		go runGitTransport(ctx, wg, gt, messages, me.updateBacklog, droneName)
-		go runMissionEngineSubscriber(ctx, wg, messages, me.fleetNode, droneName)
-		go runMissionResultSubscriber(ctx, wg, messages, me.localNode, droneName)
+		go runMessageLoop(ctx, wg, we, me.localNode, me.fleetNode, me.messages)
+		go runMissionEngineSubscriber(ctx, wg, me.messages, me.fleetNode, droneName)
+		go runMissionResultSubscriber(ctx, wg, me.messages, me.localNode, droneName)
+	}()
+
+	return me
+}
+
+func (me *MissionEngine) JoinMission(missionSlug string, gitServerAddress string, gitServerKey string) {
+	go func() {
+		defer func() {
+			r := recover()
+			if r != nil {
+				log.Printf("Recover: %v", r)
+			}
+		}()
+		log.Printf("Joining mission: '%s'", missionSlug)
+		me.messages <- msg.Message{
+			Timestamp:   time.Now(),
+			From:        "cloud",
+			To:          "*",
+			ID:          "id1",
+			MessageType: "join-mission",
+			Message:     "",
+		}
+
+		log.Printf("Running git clone...")
+		gt := gittransport.New(gitServerAddress, gitServerKey, me.droneName)
+
+		ctx, cancel := context.WithCancel(me.ctx)
+		me.closeGitTransport = cancel
+		go runGitTransport(ctx, me.wg, gt, me.messages, me.updateBacklog, me.droneName, missionSlug)
 	}()
 }
 
 func (me *MissionEngine) UpdateBacklog() {
 	me.updateBacklog <- struct{}{}
+}
+
+func (me *MissionEngine) LeaveMission() {
+	if me.closeGitTransport != nil {
+		me.closeGitTransport()
+		me.closeGitTransport = nil
+	}
+
+	me.messages <- msg.Message{
+		Timestamp:   time.Now(),
+		From:        "cloud",
+		To:          "*",
+		ID:          "id1",
+		MessageType: "leave-mission",
+		Message:     "",
+	}
 }
 
 func runMessageLoop(ctx context.Context, wg *sync.WaitGroup, we *worldengine.WorldEngine, localNode *ros2.Node, fleetNode *ros2.Node, ch <-chan msg.Message) {
@@ -131,14 +177,15 @@ func publishFleetMessage(pub *ros2.Publisher, msgOut msg.MessageOut) {
 	pub.Publish(createString(string(b)))
 }
 
-func runGitTransport(ctx context.Context, wg *sync.WaitGroup, gt *gittransport.GitEngine, ch chan<- msg.Message, gitPull <-chan struct{}, droneName string) {
+func runGitTransport(ctx context.Context, wg *sync.WaitGroup, gt *gittransport.GitEngine, ch chan<- msg.Message, gitPull <-chan struct{}, droneName string, missionSlug string) {
 	wg.Add(1)
 	defer wg.Done()
 
 	for {
 		select {
 		case <-ctx.Done():
-			close(ch)
+			// close(ch)
+			log.Printf("Leaving mission: '%s'", missionSlug)
 			return
 		case <-gitPull:
 		case <-time.After(5 * time.Second):

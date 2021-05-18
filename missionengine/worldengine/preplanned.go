@@ -2,8 +2,8 @@ package worldengine
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
-	"log"
 )
 
 type PreplannedPoint struct {
@@ -12,17 +12,25 @@ type PreplannedPoint struct {
 	Z float64 `json:"alt"`
 }
 
-func loadPrelanned() ([]PreplannedPoint, error) {
-	text, err := ioutil.ReadFile("./flightpath.json")
+func loadPrelanned(droneName string) ([]PreplannedPoint, error) {
+	filename := fmt.Sprintf("./flightpath-%s.json", droneName)
+	points, err := loadPrelannedFile(filename)
 	if err != nil {
-		log.Printf("Failed to read flightpath.json: %v", err)
+		return loadPrelannedFile("./flightpath.json")
+	}
+
+	return points, nil
+}
+
+func loadPrelannedFile(filename string) ([]PreplannedPoint, error) {
+	text, err := ioutil.ReadFile(filename)
+	if err != nil {
 		return nil, err
 	}
 
 	var path []PreplannedPoint
 	err = json.Unmarshal(text, &path)
 	if err != nil {
-		log.Printf("Failed to unmarshal flightpath.json: %v", err)
 		return nil, err
 	}
 

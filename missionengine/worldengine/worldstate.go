@@ -179,7 +179,7 @@ func (s *worldState) handleTasksAssigned(msg TasksAssigned, pubPath *ros2.Publis
 		}
 		// My tasks
 		if droneName == s.MyName {
-			newTasks := createMyTasks(tasks)
+			newTasks := createMyTasks(tasks, s.MyName)
 			tasksChanged = !tasksEqual(s.MyTasks, newTasks)
 			s.MyTasks = newTasks
 		}
@@ -208,16 +208,16 @@ func (s *worldState) handleTasksAssigned(msg TasksAssigned, pubPath *ros2.Publis
 	return result
 }
 
-func createMyTasks(tasks []*TaskAssignment) []*myTask {
+func createMyTasks(tasks []*TaskAssignment, droneName string) []*myTask {
 	mytasks := make([]*myTask, 0)
 	for _, t := range tasks {
 		path := make([]*taskPoint, 0)
 		if t.Type == "fly-to" {
 			path = append(path, &taskPoint{Reached: false, X: t.X, Y: t.Y, Z: t.Z})
 		} else if t.Type == "execute-preplanned" {
-			plan, err := loadPrelanned()
+			plan, err := loadPrelanned(droneName)
 			if err != nil {
-				log.Println("Preplanned task skipped due to errors")
+				log.Printf("Preplanned task skipped due to errors: %v", err)
 				continue
 			}
 			for _, p := range plan {

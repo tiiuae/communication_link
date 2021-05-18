@@ -61,9 +61,9 @@ func handleCommand(s *ros2.Subscription, me *MissionEngine) {
 		var message JoinMission
 		json.Unmarshal([]byte(msg.Message), &message)
 		sshUrl := fmt.Sprintf("ssh://git@%s/%s.git", message.GitServerAddress, message.MissionSlug)
-		me.Start(sshUrl, message.GitServerKey)
+		me.JoinMission(message.MissionSlug, sshUrl, message.GitServerKey)
 	case "leave-mission":
-		// me.Stop();
+		me.LeaveMission()
 	case "update-backlog":
 		me.UpdateBacklog()
 	default:
