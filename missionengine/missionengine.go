@@ -16,7 +16,6 @@ import (
 	std_msgs "github.com/tiiuae/rclgo/pkg/ros2/msgs/std_msgs/msg"
 
 	msg "github.com/tiiuae/communication_link/missionengine/types"
-	"github.com/tiiuae/rclgo/pkg/ros2/ros2types"
 )
 
 const (
@@ -75,17 +74,21 @@ func (me *MissionEngine) JoinMission(missionSlug string, gitServerAddress string
 			}
 		}()
 		log.Printf("Joining mission: '%s'", missionSlug)
+		log.Printf("Running git clone...")
+		gt, err := gittransport.New(gitServerAddress, gitServerKey, me.droneName)
+		if err != nil {
+			log.Print(err)
+			return
+		}
+
 		me.messages <- msg.Message{
 			Timestamp:   time.Now(),
 			From:        "cloud",
 			To:          "*",
 			ID:          "id1",
 			MessageType: "join-mission",
-			Message:     "",
+			Message:     missionSlug,
 		}
-
-		log.Printf("Running git clone...")
-		gt := gittransport.New(gitServerAddress, gitServerKey, me.droneName)
 
 		ctx, cancel := context.WithCancel(me.ctx)
 		me.closeGitTransport = cancel
@@ -151,6 +154,10 @@ func runMessageLoop(ctx context.Context, wg *sync.WaitGroup, we *worldengine.Wor
 						time.Sleep(m.Delay)
 						pubmavlink.Publish(createString("start_mission"))
 					}()
+				case worldengine.Land:
+					go func() {
+						pubmavlink.Publish(createString("land"))
+					}()
 				case []*worldengine.FlightPlan:
 					publishFleetMessage(pub, msgOut)
 				case []*worldengine.MissionPlan:
@@ -158,6 +165,10 @@ func runMessageLoop(ctx context.Context, wg *sync.WaitGroup, we *worldengine.Wor
 				case worldengine.TasksAssigned:
 					publishFleetMessage(pub, msgOut)
 				case worldengine.TaskCompleted:
+					publishFleetMessage(pub, msgOut)
+				case worldengine.JoinedMission:
+					publishFleetMessage(pub, msgOut)
+				case worldengine.LeftMission:
 					publishFleetMessage(pub, msgOut)
 				default:
 					log.Fatalf("Unkown message type: %T", msgOut.Message)
@@ -262,10 +273,4 @@ func runMissionResultSubscriber(ctx context.Context, wg *sync.WaitGroup, ch chan
 	if err != nil {
 		log.Printf("Subscription failed: %v", err)
 	}
-}
-
-func createString(value string) ros2types.ROS2Msg {
-	rosmsg := std_msgs.NewString()
-	rosmsg.Data.SetDefaults(value)
-	return rosmsg
 }

@@ -9,10 +9,8 @@ import (
 	"path/filepath"
 	"time"
 
-	//"github.com/go-git/go-billy/v5/memfs"
-
+	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
-	//"github.com/go-git/go-git/v5/storage/memory"
 )
 
 type Config struct {
@@ -20,7 +18,6 @@ type Config struct {
 		SSID   string
 		Secret string
 	}
-	// Drones []ConfigDrone `yaml:",omitempty"`
 }
 
 type GitEngine struct {
@@ -36,9 +33,12 @@ func (me GitEngine) DataDir() string {
 	return "db/" + me.flagName
 }
 
-func New(gitServerAddress string, gitServerKey string, droneName string) *GitEngine {
+func New(gitServerAddress string, gitServerKey string, droneName string) (*GitEngine, error) {
 	flagName := time.Now().Format("20060102150405") + "-" + droneName
-	cloneRepository(gitServerAddress, flagName)
+	err := cloneRepository(gitServerAddress, flagName)
+	if err != nil {
+		return nil, err
+	}
 
 	config := parseConfig(flagName)
 
@@ -46,11 +46,10 @@ func New(gitServerAddress string, gitServerKey string, droneName string) *GitEng
 		config,
 		gitServerAddress,
 		gitServerKey,
-		// signer,
 		flagName,
 		make(map[string]time.Time),
 		make(map[string]int64),
-	}
+	}, nil
 }
 
 func (m *GitEngine) CommitAll() {
@@ -73,7 +72,7 @@ func (m *GitEngine) pullFiles() bool {
 	return true
 }
 
-func cloneRepository(gitServerAddress string, flagName string) {
+func cloneRepository(gitServerAddress string, flagName string) error {
 	wd, _ := os.Getwd()
 	idPath := filepath.Join(wd, "../communicationlink/ssh/id_rsa")
 	khPath := filepath.Join(wd, "../communicationlink/ssh/known_host_cloud")
@@ -82,9 +81,9 @@ func cloneRepository(gitServerAddress string, flagName string) {
 	cloneCmd.Env = []string{"GIT_SSH_COMMAND=" + gitSSHCommand}
 	cloneOut, err := cloneCmd.CombinedOutput()
 	if err != nil {
-		log.Printf("%s\n\nCould not clone: %v", cloneOut, err)
-		return
+		return errors.WithMessagef(err, "Could not clone: %v", cloneOut)
 	}
+	return nil
 }
 
 func parseConfig(flagName string) Config {

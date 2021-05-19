@@ -10,12 +10,13 @@ import (
 )
 
 type WorldEngine struct {
-	me    string
-	state *worldState
+	me             string
+	currentMission string
+	state          *worldState
 }
 
 func New(me string) *WorldEngine {
-	return &WorldEngine{me, nil}
+	return &WorldEngine{me, "", nil}
 }
 
 func (we *WorldEngine) HandleMessage(msg types.Message, pubPath *ros2.Publisher, pubMavlink *ros2.Publisher) []types.MessageOut {
@@ -23,19 +24,21 @@ func (we *WorldEngine) HandleMessage(msg types.Message, pubPath *ros2.Publisher,
 	outgoing := make([]types.MessageOut, 0)
 	if msg.MessageType == "join-mission" {
 		we.state = createState(we.me)
-		return outgoing
-	}
-	if msg.MessageType == "leave-mission" {
-		we.state = nil
-		return outgoing
+		we.currentMission = msg.Message
+		return []types.MessageOut{createJoinedMission(we.me, we.currentMission)}
 	}
 
 	if we.state == nil {
-		log.Printf("Failed to handle message '%s': no active mission", msg.MessageType)
+		log.Printf("Message skipped '%s': no active mission", msg.MessageType)
 		return outgoing
 	}
 
-	if msg.MessageType == "drone-added" {
+	if msg.MessageType == "leave-mission" {
+		res := []types.MessageOut{createLeftMission(we.me, we.currentMission)}
+		we.state = nil
+		we.currentMission = ""
+		return res
+	} else if msg.MessageType == "drone-added" {
 		var message DroneAdded
 		json.Unmarshal([]byte(msg.Message), &message)
 		outgoing = state.handleDroneAdded(message)
@@ -67,9 +70,38 @@ func (we *WorldEngine) HandleMessage(msg types.Message, pubPath *ros2.Publisher,
 		var message MissionResult
 		json.Unmarshal([]byte(msg.Message), &message)
 		outgoing = state.handleMissionResult(message, pubMavlink)
+	} else {
+		log.Printf("Message skipped '%s': unknown", msg.MessageType)
+		return outgoing
 	}
 
 	return outgoing
+}
+
+func createJoinedMission(droneName string, missionSlug string) types.MessageOut {
+	return types.MessageOut{
+		Timestamp:   time.Now(),
+		From:        droneName,
+		To:          "self",
+		ID:          "id1",
+		MessageType: "joined-mission",
+		Message: JoinedMission{
+			MissionSlug: missionSlug,
+		},
+	}
+}
+
+func createLeftMission(droneName string, missionSlug string) types.MessageOut {
+	return types.MessageOut{
+		Timestamp:   time.Now(),
+		From:        droneName,
+		To:          "self",
+		ID:          "id1",
+		MessageType: "left-mission",
+		Message: JoinedMission{
+			MissionSlug: missionSlug,
+		},
+	}
 }
 
 // Message types
@@ -153,9 +185,20 @@ type MissionResult struct {
 }
 
 type FlightPath struct {
-	Points []Point
+	Points []Point `json:"points"`
 }
 
 type StartMission struct {
-	Delay time.Duration
+	Delay time.Duration `json:"delay"`
+}
+
+type Land struct {
+}
+
+type JoinedMission struct {
+	MissionSlug string `json:"mission_slug"`
+}
+
+type LeftMission struct {
+	MissionSlug string `json:"mission_slug"`
 }

@@ -29,8 +29,8 @@ func RegisterLocalSubscriptions(subs *ros2app.Subscriptions, ctx context.Context
 	subs.Add("debug_values", "std_msgs/String", handleDebugValues(ctx, mqttClient, deviceID))
 }
 
-func RegisterFleetSubscriptions(subs *ros2app.Subscriptions, ctx context.Context, mqttClient mqtt.Client) {
-	subs.Add("missionengine", "std_msgs/String", handleMissionEngineMessages(ctx, mqttClient))
+func RegisterFleetSubscriptions(subs *ros2app.Subscriptions, ctx context.Context, mqttClient mqtt.Client, deviceID string) {
+	subs.Add("missionengine", "std_msgs/String", handleMissionEngineMessages(ctx, mqttClient, deviceID))
 }
 
 func Start(ctx context.Context, wg *sync.WaitGroup, mqttClient mqtt.Client, deviceID string) {
@@ -257,7 +257,7 @@ func handleDebugValues(ctx context.Context, mqttClient mqtt.Client, deviceID str
 	}
 }
 
-func handleMissionEngineMessages(ctx context.Context, mqttClient mqtt.Client) func(s *ros2.Subscription) {
+func handleMissionEngineMessages(ctx context.Context, mqttClient mqtt.Client, deviceID string) func(s *ros2.Subscription) {
 	return func(s *ros2.Subscription) {
 		var m std_msgs.String
 		_, rclErr := s.TakeMessage(&m)
@@ -274,6 +274,12 @@ func handleMissionEngineMessages(ctx context.Context, mqttClient mqtt.Client) fu
 			log.Printf("Could not unmarshal payload: %v", err)
 			return
 		}
+
+		// Mission events are coming from entire fleet. Publish only local messages to cloud.
+		if msg.From != deviceID {
+			return
+		}
+
 		log.Printf("Mission event: %s", msg.MessageType)
 		switch msg.MessageType {
 		case "mission-plan":
@@ -281,6 +287,12 @@ func handleMissionEngineMessages(ctx context.Context, mqttClient mqtt.Client) fu
 			mqttClient.Publish(topic, 1, false, msg.Message)
 		case "flight-plan":
 			topic := fmt.Sprintf("/devices/%s/events/flight-plan", msg.From)
+			mqttClient.Publish(topic, 1, false, msg.Message)
+		case "joined-mission":
+			topic := fmt.Sprintf("/devices/%s/events/joined-mission", msg.From)
+			mqttClient.Publish(topic, 1, false, msg.Message)
+		case "left-mission":
+			topic := fmt.Sprintf("/devices/%s/events/left-mission", msg.From)
 			mqttClient.Publish(topic, 1, false, msg.Message)
 		default:
 			log.Printf("Unknown mission event: %s", msg.MessageType)

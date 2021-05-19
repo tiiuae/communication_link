@@ -6,6 +6,7 @@ import (
 	geometry_msgs "github.com/tiiuae/rclgo/pkg/ros2/msgs/geometry_msgs/msg"
 	nav_msgs "github.com/tiiuae/rclgo/pkg/ros2/msgs/nav_msgs/msg"
 	std_msgs "github.com/tiiuae/rclgo/pkg/ros2/msgs/std_msgs/msg"
+	"github.com/tiiuae/rclgo/pkg/ros2/ros2types"
 )
 
 func createPath(flightPath worldengine.FlightPath) *nav_msgs.Path {
@@ -32,4 +33,10 @@ func createPath(flightPath worldengine.FlightPath) *nav_msgs.Path {
 	}
 
 	return path
+}
+
+func createString(value string) ros2types.ROS2Msg {
+	rosmsg := std_msgs.NewString()
+	rosmsg.Data.SetDefaults(value)
+	return rosmsg
 }

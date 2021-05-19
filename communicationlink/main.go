@@ -83,7 +83,7 @@ func main() {
 
 	// Setup telemetry
 	telemetry.RegisterLocalSubscriptions(localSubs, ctx, mqttClient, *deviceID)
-	telemetry.RegisterFleetSubscriptions(fleetSubs, ctx, mqttClient)
+	telemetry.RegisterFleetSubscriptions(fleetSubs, ctx, mqttClient, *deviceID)
 
 	err := localSubs.Subscribe(ctx)
 	if err != nil {

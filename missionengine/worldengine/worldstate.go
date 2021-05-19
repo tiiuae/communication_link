@@ -6,9 +6,6 @@ import (
 
 	"github.com/tiiuae/communication_link/missionengine/types"
 	"github.com/tiiuae/rclgo/pkg/ros2"
-	std_msgs "github.com/tiiuae/rclgo/pkg/ros2/msgs/std_msgs/msg"
-
-	"github.com/tiiuae/rclgo/pkg/ros2/ros2types"
 )
 
 const (
@@ -33,12 +30,7 @@ type worldState struct {
 }
 
 type droneState struct {
-	Name  string
-	Tasks []*fleetTask
-}
-
-type fleetTask struct {
-	ID string
+	Name string
 }
 
 type myTask struct {
@@ -85,8 +77,7 @@ func (s *worldState) handleDroneAdded(msg DroneAdded) []types.MessageOut {
 		s.LeaderName = name
 	}
 
-	// TODO: GetOrCreate
-	s.Drones[name] = &droneState{name, []*fleetTask{}}
+	s.Drones[name] = &droneState{name}
 
 	// Done if not leader
 	if s.LeaderName != s.MyName {
@@ -170,14 +161,6 @@ func (s *worldState) handleExecutePredefinedToTaskCreated(msg ExecutePredefinedT
 func (s *worldState) handleTasksAssigned(msg TasksAssigned, pubPath *ros2.Publisher, pubMavlink *ros2.Publisher) []types.MessageOut {
 	tasksChanged := false
 	for droneName, tasks := range msg.Tasks {
-		// Fleet tasks
-		// TODO: GetOrCreate
-		drone := s.Drones[droneName]
-		drone.Tasks = make([]*fleetTask, 0)
-		for _, t := range tasks {
-			drone.Tasks = append(drone.Tasks, &fleetTask{ID: t.ID})
-		}
-		// My tasks
 		if droneName == s.MyName {
 			newTasks := createMyTasks(tasks, s.MyName)
 			tasksChanged = !tasksEqual(s.MyTasks, newTasks)
@@ -276,6 +259,17 @@ func (s *worldState) createFlyToMessages(points []Point) []types.MessageOut {
 	}
 }
 
+func (s *worldState) createLandMessage() types.MessageOut {
+	return types.MessageOut{
+		Timestamp:   time.Now().UTC(),
+		From:        s.MyName,
+		To:          s.MyName,
+		ID:          "id1",
+		MessageType: "land",
+		Message:     Land{},
+	}
+}
+
 func (s *worldState) handleTaskCompleted(msg TaskCompleted) []types.MessageOut {
 	for _, bi := range s.Backlog {
 		if bi.ID == msg.ID {
@@ -321,7 +315,7 @@ func (s *worldState) handleMissionResult(msg MissionResult, pubMavlink *ros2.Pub
 					t.Completed = true
 					if ti == len(s.MyTasks)-1 {
 						// this is the last task in the drone -> make the drone land
-						pubMavlink.Publish(createString("land"))
+						result = append(result, s.createLandMessage())
 					}
 				}
 			}
@@ -458,26 +452,4 @@ func smallestString(values []string) string {
 		}
 	}
 	return result
-}
-
-// func serialize(i interface{}) string {
-// 	b, err := json.Marshal(i)
-// 	if err != nil {
-// 		panic(err)
-// 	}
-
-// 	return string(b)
-// }
-
-// func deserialize(jsonString string, i interface{}) {
-// 	err := json.Unmarshal([]byte(jsonString), i)
-// 	if err != nil {
-// 		panic(err)
-// 	}
-// }
-
-func createString(value string) ros2types.ROS2Msg {
-	rosmsg := std_msgs.NewString()
-	rosmsg.Data.SetDefaults(value)
-	return rosmsg
 }
