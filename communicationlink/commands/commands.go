@@ -8,9 +8,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"io/ioutil"
 	"log"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -29,6 +27,8 @@ const (
 )
 
 var missionSlug string = ""
+
+var sshID []byte = make([]byte, 0)
 
 type controlCommand struct {
 	Command   string
@@ -80,8 +80,9 @@ func initializeTrust(client mqtt.Client, deviceID string) {
 		Bytes: privBytes,
 	})
 
-	os.Mkdir("ssh", 0755)
-	err = ioutil.WriteFile("ssh/id_rsa", privatePemData, 0600)
+	// os.Mkdir("ssh", 0755)
+	// err = ioutil.WriteFile("ssh/id_rsa", privatePemData, 0600)
+	sshID = privatePemData
 
 	sshPublicKey, _ := ssh.NewPublicKey(publicKey)
 	sshPublicKeyStr := ssh.MarshalAuthorizedKey(sshPublicKey)
@@ -110,6 +111,8 @@ func joinMission(payload []byte, pubMissions *ros2.Publisher) {
 		GitServerAddress string `json:"git_server_address"`
 		GitServerKey     string `json:"git_server_key"`
 		MissionSlug      string `json:"mission_slug"`
+		SSHID            []byte `json:"ssh_id"`
+		SSHKnownHosts    []byte `json:"ssh_known_hosts"`
 	}
 	err := json.Unmarshal(payload, &info)
 	if err != nil {
@@ -120,13 +123,21 @@ func joinMission(payload []byte, pubMissions *ros2.Publisher) {
 
 	// TODO: knownhosts.HashHostname
 	knownCloudHost := fmt.Sprintf("%s %s\n", knownhosts.Normalize(info.GitServerAddress), info.GitServerKey)
-	err = ioutil.WriteFile("ssh/known_host_cloud", []byte(knownCloudHost), 0644)
-	if err != nil {
-		log.Printf("Could not write known_host_cloud file: %v", err)
-		return
-	}
+	// err = ioutil.WriteFile("ssh/known_host_cloud", []byte(knownCloudHost), 0644)
+	// if err != nil {
+	// 	log.Printf("Could not write known_host_cloud file: %v", err)
+	// 	return
+	// }
 
 	missionSlug = info.MissionSlug
+	info.SSHID = sshID
+	info.SSHKnownHosts = []byte(knownCloudHost)
+
+	payload2, err := json.Marshal(info)
+	if err != nil {
+		log.Printf("Could not marshal payload: %v", err)
+		return
+	}
 
 	msg := missionsMessage{
 		Timestamp:   time.Now().UTC(),
@@ -134,7 +145,7 @@ func joinMission(payload []byte, pubMissions *ros2.Publisher) {
 		To:          "self",
 		ID:          "id1",
 		MessageType: "join-mission",
-		Message:     string(payload),
+		Message:     string(payload2),
 	}
 	b, _ := json.Marshal(msg)
 
