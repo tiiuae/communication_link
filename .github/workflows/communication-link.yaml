@@ -1,0 +1,88 @@
+name: communication-link
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - communicationlink/*
+  pull_request:
+    branches: [ main ]
+    paths:
+      - communicationlink/*
+  workflow_dispatch:
+
+jobs:
+  tii-communication-link-deb:
+    defaults:
+      run:
+        shell: bash
+    runs-on: ubuntu-latest
+    container: osrf/ros:foxy-desktop
+    steps:
+
+      - name: Checkout communication-link
+        uses: actions/checkout@v2
+
+      - name: Setup Go environment
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.16
+
+      - name: Install additional tools and libraries
+        run: |
+          echo "deb [trusted=yes] https://artifactory.ssrc.fi/artifactory/debian-public-local focal fog-sw" >> /etc/apt/sources.list
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            curl \
+            debhelper \
+            dh-make \
+            fakeroot \
+            gcc \
+            git-core \
+            libgstreamer-plugins-bad1.0-dev \
+            libgstreamer-plugins-base1.0-dev \
+            libgstreamer-plugins-good1.0-dev \
+            libgstreamer1.0-0 \
+            make \
+            python3-bloom \
+            ros-foxy-px4-msgs \
+            ros-foxy-test-msgs
+
+      - name: Build debian package
+        run: |
+          . /opt/ros/foxy/setup.sh
+
+          mkdir -p communicationlink/packaging/common
+          cp -fR scripts/* communicationlink/packaging/common/
+
+          cd communicationlink
+          params="-m $(realpath .) -v 2.0.0 -c $(git rev-parse HEAD) -g $(git log --date=format:%Y%m%d --pretty=~git%cd.%h -n 1) -b ${GITHUB_RUN_NUMBER}"
+          ./packaging/common/package.sh $params
+
+      - name: Install jfrog CLI tool
+        uses: jfrog/setup-jfrog-cli@v1
+        with:
+          version: 1.45.2
+        env:
+          JF_ARTIFACTORY_1: ${{ secrets.ARTIFACTORY_TOKEN }}
+
+      - name: Upload to Artifactory
+        env:
+          ARTIFACTORY_REPO: debian-public-local
+          DISTRIBUTION: focal
+          COMPONENT: fog-sw
+          ARCHITECTURE: amd64
+        run: |
+          set -exu
+          jfrog rt ping
+          pkg=$(find "$GITHUB_WORKSPACE" -name 'communication-link*.deb')
+          jfrog rt u --deb "$DISTRIBUTION/$COMPONENT/$ARCHITECTURE" \
+                     --target-props COMMIT="$GITHUB_SHA" \
+                     "$pkg" \
+                     "$ARTIFACTORY_REPO"
+          jfrog rt build-publish
+          jfrog rt bpr "$ARTIFACTORY_REPO" \
+                       --status dev \
+                       --comment "development build"

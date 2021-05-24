@@ -1,0 +1,6 @@
+Package: mission-engine
+Version: VERSION
+Maintainer: Jari Nippula <jarix@ssrc.tii.ae>
+Architecture: amd64
+Depends:
+Description: Mission engine for drone

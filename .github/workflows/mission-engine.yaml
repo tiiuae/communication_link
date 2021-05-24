@@ -1,0 +1,84 @@
+name: mission-engine
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - missionengine/*
+  pull_request:
+    branches: [ main ]
+    paths:
+      - missionengine/*
+  workflow_dispatch:
+
+jobs:
+  tii-mission-engine-deb:
+    defaults:
+      run:
+        shell: bash
+    runs-on: ubuntu-latest
+    container: osrf/ros:foxy-desktop
+    steps:
+
+      - name: Checkout mission-engine
+        uses: actions/checkout@v2
+
+      - name: Setup Go environment
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.16
+
+      - name: Install additional tools and libraries
+        run: |
+          echo "deb [trusted=yes] https://artifactory.ssrc.fi/artifactory/debian-public-local focal fog-sw" >> /etc/apt/sources.list
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            curl \
+            debhelper \
+            dh-make \
+            fakeroot \
+            gcc \
+            git-core \
+            make \
+            python3-bloom \
+            ros-foxy-px4-msgs \
+            ros-foxy-test-msgs
+
+      - name: Build debian package
+        run: |
+          . /opt/ros/foxy/setup.sh
+
+          mkdir -p missionengine/packaging/common
+          cp -fR scripts/* missionengine/packaging/common/
+
+          cd missionengine
+          params="-m $(realpath .) -v 2.0.0 -c $(git rev-parse HEAD) -g $(git log --date=format:%Y%m%d --pretty=~git%cd.%h -n 1) -b ${GITHUB_RUN_NUMBER}"
+          ./packaging/common/package.sh $params
+
+      - name: Install jfrog CLI tool
+        uses: jfrog/setup-jfrog-cli@v1
+        with:
+          version: 1.45.2
+        env:
+          JF_ARTIFACTORY_1: ${{ secrets.ARTIFACTORY_TOKEN }}
+
+      - name: Upload to Artifactory
+        env:
+          ARTIFACTORY_REPO: debian-public-local
+          DISTRIBUTION: focal
+          COMPONENT: fog-sw
+          ARCHITECTURE: amd64
+        run: |
+          set -exu
+          jfrog rt ping
+          pkg=$(find "$GITHUB_WORKSPACE" -name 'mission-engine*.deb')
+          jfrog rt u --deb "$DISTRIBUTION/$COMPONENT/$ARCHITECTURE" \
+                     --target-props COMMIT="$GITHUB_SHA" \
+                     "$pkg" \
+                     "$ARTIFACTORY_REPO"
+          jfrog rt build-publish
+          jfrog rt bpr "$ARTIFACTORY_REPO" \
+                       --status dev \
+                       --comment "development build"
