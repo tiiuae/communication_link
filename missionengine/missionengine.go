@@ -205,6 +205,18 @@ func runGitTransport(ctx context.Context, wg *sync.WaitGroup, gt *gittransport.G
 		for _, msg := range msgs {
 			ch <- msg
 		}
+
+		// Trigger process when new messages arrive / after latest message is handled
+		if len(msgs) > 0 {
+			ch <- msg.Message{
+				Timestamp:   time.Now().UTC(),
+				From:        droneName,
+				To:          droneName,
+				ID:          "",
+				MessageType: "process",
+				Message:     "",
+			}
+		}
 	}
 }
 
