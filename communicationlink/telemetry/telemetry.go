@@ -27,6 +27,7 @@ func RegisterLocalSubscriptions(subs *ros2app.Subscriptions, ctx context.Context
 	subs.Add("VehicleStatus_PubSubTopic", "px4_msgs/VehicleStatus", handleStatusMessages)
 	subs.Add("BatteryStatus_PubSubTopic", "px4_msgs/BatteryStatus", handleBatteryMessages)
 	subs.Add("debug_values", "std_msgs/String", handleDebugValues(ctx, mqttClient, deviceID))
+	subs.Add("debug_events", "std_msgs/String", handleDebugEvents(ctx, mqttClient, deviceID))
 }
 
 func RegisterFleetSubscriptions(subs *ros2app.Subscriptions, ctx context.Context, mqttClient mqtt.Client, deviceID string) {
@@ -64,6 +65,12 @@ type telemetry struct {
 	StateUpdated bool
 	ArmingState  uint8
 	NavState     uint8
+}
+
+type debugEvent struct {
+	From    string
+	Title   string
+	Message string
 }
 
 type debugValue struct {
@@ -217,6 +224,27 @@ func handleBatteryMessages(s *ros2.Subscription) {
 	currentTelemetry.BatteryUpdated = true
 	telemetrySent = false
 	telemetryMutex.Unlock()
+}
+
+func handleDebugEvents(ctx context.Context, mqttClient mqtt.Client, deviceID string) func(s *ros2.Subscription) {
+	topic := fmt.Sprintf("/devices/%s/%s", deviceID, "events/debug-events")
+	return func(s *ros2.Subscription) {
+		var m std_msgs.String
+		_, err := s.TakeMessage(&m)
+		if err != nil {
+			log.Print("TakeMessage failed: handleDebugEvents")
+			return
+		}
+
+		msg := fmt.Sprintf("%v", m.Data)
+		parts := strings.SplitN(msg, ":", 3)
+		b, _ := json.Marshal(debugEvent{
+			From:    parts[0],
+			Title:   parts[1],
+			Message: parts[2],
+		})
+		mqttClient.Publish(topic, qos, retain, string(b))
+	}
 }
 
 func handleDebugValues(ctx context.Context, mqttClient mqtt.Client, deviceID string) func(s *ros2.Subscription) {
