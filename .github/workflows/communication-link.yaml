@@ -17,7 +17,7 @@ jobs:
       run:
         shell: bash
     runs-on: ubuntu-latest
-    container: osrf/ros:foxy-desktop
+    container: ros:foxy-ros-base
     steps:
 
       - name: Checkout communication-link
@@ -41,14 +41,9 @@ jobs:
             fakeroot \
             gcc \
             git-core \
-            libgstreamer-plugins-bad1.0-dev \
-            libgstreamer-plugins-base1.0-dev \
-            libgstreamer-plugins-good1.0-dev \
-            libgstreamer1.0-0 \
             make \
             python3-bloom \
-            ros-foxy-px4-msgs \
-            ros-foxy-test-msgs
+            ros-foxy-px4-msgs
 
       - name: Build debian package
         run: |

@@ -2,5 +2,9 @@ Package: communication-link
 Version: VERSION
 Maintainer: Jari Nippula <jarix@ssrc.tii.ae>
 Architecture: amd64
-Depends:
 Description: Communication link for drone cloud connection
+Depends: ca-certificates,
+    libc6,
+    libgcc-s1,
+    ros-foxy-px4-msgs,
+    ros-foxy-ros-core

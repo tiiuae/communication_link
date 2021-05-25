@@ -2,5 +2,11 @@ Package: mission-engine
 Version: VERSION
 Maintainer: Jari Nippula <jarix@ssrc.tii.ae>
 Architecture: amd64
-Depends:
 Description: Mission engine for drone
+Depends: ca-certificates,
+    git,
+    libc6,
+    libgcc-s1,
+    openssh-client,
+    ros-foxy-px4-msgs,
+    ros-foxy-ros-core

@@ -17,7 +17,7 @@ jobs:
       run:
         shell: bash
     runs-on: ubuntu-latest
-    container: osrf/ros:foxy-desktop
+    container: ros:foxy-ros-base
     steps:
 
       - name: Checkout mission-engine
@@ -43,8 +43,7 @@ jobs:
             git-core \
             make \
             python3-bloom \
-            ros-foxy-px4-msgs \
-            ros-foxy-test-msgs
+            ros-foxy-px4-msgs
 
       - name: Build debian package
         run: |
