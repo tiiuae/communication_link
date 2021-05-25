@@ -102,7 +102,7 @@ func main() {
 	commands.StartCommandHandlers(ctx, &wg, mqttClient, rclLocalNode, *deviceID)
 
 	// Setup mesh
-	publishDefaultMesh(ctx, mqttClient, rclLocalNode, *deviceID)
+	// publishDefaultMesh(ctx, mqttClient, rclLocalNode, *deviceID)
 
 	// wait for termination and close quit to signal all
 	<-terminationSignals
