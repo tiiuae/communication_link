@@ -116,12 +116,15 @@ var (
 // loop to send telemetry 10/s
 func startSendingTelemetry(ctx context.Context, mqttClient mqtt.Client, deviceID string) {
 	topic := fmt.Sprintf("/devices/%s/%s", deviceID, "events/telemetry")
+	// log.Println("Starting to send telemetry")
+	telemetrySentAt := time.Now()
 	for {
 		select {
 		case <-time.After(100 * time.Millisecond):
 			u := uuid.New()
 			telemetryMutex.Lock()
-			if telemetrySent {
+			if telemetrySent && telemetrySentAt.Add(time.Second).After(time.Now()) {
+				// log.Println("No telemetry")
 				// there's no new data to send
 				// skip this round
 				telemetryMutex.Unlock()
@@ -135,6 +138,8 @@ func startSendingTelemetry(ctx context.Context, mqttClient mqtt.Client, deviceID
 			currentTelemetry.StateUpdated = false
 			currentTelemetry.BatteryUpdated = false
 			telemetryMutex.Unlock()
+			// log.Println("Publishing telemetry event")
+			telemetrySentAt = time.Now()
 			mqttClient.Publish(topic, qos, retain, string(b))
 		case <-ctx.Done():
 			return

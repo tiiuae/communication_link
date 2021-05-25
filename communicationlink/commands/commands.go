@@ -388,13 +388,16 @@ func StartCommandHandlers(ctx context.Context, wg *sync.WaitGroup, mqttClient mq
 			log.Printf("Failed to unmarshal config yaml: %v", err)
 			return
 		}
-		wifiYaml := yamlConfig["initial-wifi"]
+		wifiYaml, ok := yamlConfig["initial-wifi"]
+		if !ok {
+			log.Println("initial-wifi -configuration missing -> mesh not configured")
+			return
+		}
 		wifiJson, err := json.Marshal(wifiYaml)
 		if err != nil {
 			log.Printf("Failed to marshal mesh json: %v", err)
 			return
 		}
-		log.Printf("%v", string(wifiJson))
 		go publishMeshConfig(node, string(wifiJson))
 	})
 	if err := configToken.Error(); err != nil {
