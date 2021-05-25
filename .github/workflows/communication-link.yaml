@@ -4,11 +4,11 @@ on:
   push:
     branches: [ main ]
     paths:
-      - communicationlink/*
+      - communicationlink/**
   pull_request:
     branches: [ main ]
     paths:
-      - communicationlink/*
+      - communicationlink/**
   workflow_dispatch:
 
 jobs:

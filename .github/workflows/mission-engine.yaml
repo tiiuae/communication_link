@@ -4,11 +4,11 @@ on:
   push:
     branches: [ main ]
     paths:
-      - missionengine/*
+      - missionengine/**
   pull_request:
     branches: [ main ]
     paths:
-      - missionengine/*
+      - missionengine/**
   workflow_dispatch:
 
 jobs:
