@@ -16,7 +16,6 @@ import (
 	"github.com/tiiuae/communication_link/communicationlink/ros2app"
 
 	"github.com/tiiuae/rclgo/pkg/ros2"
-	_ "github.com/tiiuae/rclgo/pkg/ros2/msgs"
 	px4_msgs "github.com/tiiuae/rclgo/pkg/ros2/msgs/px4_msgs/msg"
 	std_msgs "github.com/tiiuae/rclgo/pkg/ros2/msgs/std_msgs/msg"
 )
