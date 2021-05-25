@@ -17,8 +17,10 @@ import (
 	"github.com/tiiuae/communication_link/communicationlink/ros2app"
 	"github.com/tiiuae/rclgo/pkg/ros2"
 	nav_msgs "github.com/tiiuae/rclgo/pkg/ros2/msgs/nav_msgs/msg"
+	std_msgs "github.com/tiiuae/rclgo/pkg/ros2/msgs/std_msgs/msg"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -284,7 +286,7 @@ func handleControlCommands(ctx context.Context, wg *sync.WaitGroup, mqttClient m
 	for {
 		select {
 		case <-ctx.Done():
-			pubMavlink.Fini()
+			pubMavlink.Close()
 			return
 		case command := <-commands:
 			handleControlCommand(command, deviceID, mqttClient, pubMavlink, pubMissions)
@@ -300,7 +302,7 @@ func handleMissionCommands(ctx context.Context, wg *sync.WaitGroup, node *ros2.N
 	for {
 		select {
 		case <-ctx.Done():
-			pub.Fini()
+			pub.Close()
 			return
 		case command := <-commands:
 			handleMissionCommand(command, pub)
@@ -316,7 +318,7 @@ func handleGstreamerCommands(ctx context.Context, wg *sync.WaitGroup, node *ros2
 	for {
 		select {
 		case <-ctx.Done():
-			pub.Fini()
+			pub.Close()
 			return
 		case command := <-commands:
 			handleGstreamerCommand(command, pub)
@@ -379,7 +381,21 @@ func StartCommandHandlers(ctx context.Context, wg *sync.WaitGroup, mqttClient mq
 	// Latest config received on startup
 	configTopic := fmt.Sprintf("/devices/%s/config", deviceID)
 	configToken := mqttClient.Subscribe(configTopic, 0, func(client mqtt.Client, msg mqtt.Message) {
-		log.Printf("Got config: %v", string(msg.Payload()))
+		log.Printf("Got config:\n%v", string(msg.Payload()))
+		yamlConfig := make(map[string]interface{}, 0)
+		err := yaml.Unmarshal(msg.Payload(), &yamlConfig)
+		if err != nil {
+			log.Printf("Failed to unmarshal config yaml: %v", err)
+			return
+		}
+		wifiYaml := yamlConfig["initial-wifi"]
+		wifiJson, err := json.Marshal(wifiYaml)
+		if err != nil {
+			log.Printf("Failed to marshal mesh json: %v", err)
+			return
+		}
+		log.Printf("%v", string(wifiJson))
+		go publishMeshConfig(node, string(wifiJson))
 	})
 	if err := configToken.Error(); err != nil {
 		log.Fatalf("Error on subscribe: %v", err)
@@ -396,4 +412,12 @@ func publishDeviceState(ctx context.Context, mqttClient mqtt.Client, deviceID st
 	}
 	b, _ := json.Marshal(msg)
 	mqttClient.Publish(topic, 1, false, b)
+}
+
+func publishMeshConfig(node *ros2.Node, json string) {
+	log.Printf("Sending mesh parameters")
+	pub, _ := node.NewPublisher("mesh_parameters", &std_msgs.String{})
+	time.Sleep(5 * time.Second)
+	pub.Publish(ros2app.CreateString(string(json)))
+	log.Printf("Mesh parameters sent")
 }

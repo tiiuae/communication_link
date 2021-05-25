@@ -3,6 +3,7 @@ package ros2app
 import (
 	"context"
 	"log"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/tiiuae/rclgo/pkg/ros2"
@@ -40,7 +41,7 @@ func (ss *Subscriptions) Subscribe(ctx context.Context) error {
 		}
 
 		go func() {
-			err := sub.Spin(ctx)
+			err := sub.Spin(ctx, 5*time.Second)
 			log.Printf("Subscription failed: %v", err)
 		}()
 	}
