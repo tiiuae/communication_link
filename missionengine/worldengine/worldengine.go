@@ -46,7 +46,7 @@ func (we *WorldEngine) HandleMessage(msg types.Message, pubPath *ros2.Publisher,
 		var message DroneRemoved
 		json.Unmarshal([]byte(msg.Message), &message)
 		outgoing = state.handleDroneRemoved(message)
-	} else if msg.MessageType == "task-created" && state.MyName == state.LeaderName {
+	} else if msg.MessageType == "task-created" {
 		var message TaskCreated
 		json.Unmarshal([]byte(msg.Message), &message)
 		if message.Type == "fly-to" {
@@ -61,7 +61,7 @@ func (we *WorldEngine) HandleMessage(msg types.Message, pubPath *ros2.Publisher,
 	} else if msg.MessageType == "tasks-assigned" {
 		var message TasksAssigned
 		json.Unmarshal([]byte(msg.Message), &message)
-		outgoing = state.handleTasksAssigned(message, pubPath, pubMavlink)
+		outgoing = state.handleTasksAssigned(message)
 	} else if msg.MessageType == "task-completed" {
 		var message TaskCompleted
 		json.Unmarshal([]byte(msg.Message), &message)
@@ -69,7 +69,9 @@ func (we *WorldEngine) HandleMessage(msg types.Message, pubPath *ros2.Publisher,
 	} else if msg.MessageType == "mission-result" {
 		var message MissionResult
 		json.Unmarshal([]byte(msg.Message), &message)
-		outgoing = state.handleMissionResult(message, pubMavlink)
+		outgoing = state.handleMissionResult(message)
+	} else if msg.MessageType == "process" {
+		outgoing = state.process()
 	} else {
 		log.Printf("Message skipped '%s': unknown", msg.MessageType)
 		return outgoing

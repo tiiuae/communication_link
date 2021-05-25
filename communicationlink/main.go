@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -101,7 +102,7 @@ func main() {
 	commands.StartCommandHandlers(ctx, &wg, mqttClient, rclLocalNode, *deviceID)
 
 	// Setup mesh
-	publishDefaultMesh(ctx, mqttClient, rclLocalNode)
+	publishDefaultMesh(ctx, mqttClient, rclLocalNode, *deviceID)
 
 	// wait for termination and close quit to signal all
 	<-terminationSignals
@@ -194,14 +195,39 @@ func newMQTTClient() mqtt.Client {
 	return client
 }
 
-func publishDefaultMesh(ctx context.Context, mqttClient mqtt.Client, node *ros2.Node) {
-	pub := ros2app.NewPublisher(node, "mesh_parameters", "std_msgs/String")
+func publishDefaultMesh(ctx context.Context, mqttClient mqtt.Client, node *ros2.Node, deviceID string) {
+	go func() {
+		log.Printf("Sending mesh parameters")
+		pub := ros2app.NewPublisher(node, "mesh_parameters", "std_msgs/String")
 
-	text, err := ioutil.ReadFile("./default_mesh.json")
-	if err != nil {
-		log.Printf("Failed to read default_mesh.json: %v", err)
-		return
+		text, err := ioutil.ReadFile("./default_mesh.json")
+		if err != nil {
+			pub.Publish(ros2app.CreateString(string(defaultMesh(deviceID))))
+			log.Printf("Mesh parameters sent")
+			return
+		}
+
+		pub.Publish(ros2app.CreateString(string(text)))
+		log.Printf("Mesh parameters sent")
+	}()
+}
+
+func defaultMesh(deviceID string) string {
+	mesh := map[string]interface{}{
+		"api_version": 1,
+		"ssid":        "gold",
+		"key":         "1234567890",
+		"enc":         "wep",
+		"ap_mac":      "00:11:22:33:44:55",
+		"country":     "fi",
+		"frequency":   "5220",
+		"ip":          fmt.Sprintf("192.168.1.%s", string(deviceID[len(deviceID)-1])),
+		"subnet":      "255.255.255.0",
+		"tx_power":    "30",
+		"mode":        "mesh",
 	}
 
-	pub.Publish(ros2app.CreateString(string(text)))
+	res, _ := json.Marshal(mesh)
+
+	return string(res)
 }
