@@ -133,9 +133,9 @@ func runMessageLoop(ctx context.Context, wg *sync.WaitGroup, we *worldengine.Wor
 		log.Fatalf("Failed to create publisher: %v", err)
 	}
 
-	defer pub.Fini()
-	defer pubpath.Fini()
-	defer pubmavlink.Fini()
+	defer pub.Close()
+	defer pubpath.Close()
+	defer pubmavlink.Close()
 
 	for {
 		select {

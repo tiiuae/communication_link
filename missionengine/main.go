@@ -43,12 +43,12 @@ func main() {
 	}
 	defer rclContext.Close()
 
-	rclLocalNode, rclErr := rclContext.NewNode("communicationlink_local", *deviceID)
+	rclLocalNode, rclErr := rclContext.NewNode("missionengine_local", *deviceID)
 	if rclErr != nil {
 		log.Fatal(rclErr)
 	}
 
-	rclFleetNode, rclErr := rclContext.NewNode("communicationlink_fleet", "fleet")
+	rclFleetNode, rclErr := rclContext.NewNode("missionengine_fleet", "fleet")
 	if rclErr != nil {
 		log.Fatal(rclErr)
 	}
