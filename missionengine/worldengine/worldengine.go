@@ -62,10 +62,20 @@ func (we *WorldEngine) HandleMessage(msg types.Message, pubPath *ros2.Publisher,
 		var message TasksAssigned
 		json.Unmarshal([]byte(msg.Message), &message)
 		outgoing = state.handleTasksAssigned(message)
+		outgoing = append(outgoing, state.processTasks()...)
+	} else if msg.MessageType == "task-queued" {
+		var message TaskCompleted
+		json.Unmarshal([]byte(msg.Message), &message)
+		outgoing = state.handleTaskQueued(message)
+	} else if msg.MessageType == "task-started" {
+		var message TaskCompleted
+		json.Unmarshal([]byte(msg.Message), &message)
+		outgoing = state.handleTaskStarted(message)
 	} else if msg.MessageType == "task-completed" {
 		var message TaskCompleted
 		json.Unmarshal([]byte(msg.Message), &message)
 		outgoing = state.handleTaskCompleted(message)
+		outgoing = append(outgoing, state.processTasks()...)
 	} else if msg.MessageType == "mission-result" {
 		var message MissionResult
 		json.Unmarshal([]byte(msg.Message), &message)
@@ -162,6 +172,14 @@ type FlightPlan struct {
 	X       float64 `json:"lat"`
 	Y       float64 `json:"lon"`
 	Z       float64 `json:"alt"`
+}
+
+type TaskQueued struct {
+	ID string `json:"id"`
+}
+
+type TaskStarted struct {
+	ID string `json:"id"`
 }
 
 type TaskCompleted struct {

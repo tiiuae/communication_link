@@ -312,7 +312,8 @@ func handleMissionEngineMessages(ctx context.Context, mqttClient mqtt.Client, de
 			return
 		}
 
-		log.Printf("Mission event: %s", msg.MessageType)
+		// log.Printf("Mission event: %s", msg.MessageType)
+		log.Printf("Mission event: %s\n%s", msg.MessageType, msg.Message)
 		switch msg.MessageType {
 		case "mission-plan":
 			topic := fmt.Sprintf("/devices/%s/events/mission-plan", msg.From)

@@ -164,6 +164,10 @@ func runMessageLoop(ctx context.Context, wg *sync.WaitGroup, we *worldengine.Wor
 					publishFleetMessage(pub, msgOut)
 				case worldengine.TasksAssigned:
 					publishFleetMessage(pub, msgOut)
+				case worldengine.TaskQueued:
+					publishFleetMessage(pub, msgOut)
+				case worldengine.TaskStarted:
+					publishFleetMessage(pub, msgOut)
 				case worldengine.TaskCompleted:
 					publishFleetMessage(pub, msgOut)
 				case worldengine.JoinedMission:
@@ -171,7 +175,7 @@ func runMessageLoop(ctx context.Context, wg *sync.WaitGroup, we *worldengine.Wor
 				case worldengine.LeftMission:
 					publishFleetMessage(pub, msgOut)
 				default:
-					log.Fatalf("Unkown message type: %T", msgOut.Message)
+					log.Fatalf("Unknown message type: %T", msgOut.Message)
 				}
 			}
 		}
