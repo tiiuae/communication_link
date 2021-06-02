@@ -170,6 +170,8 @@ func runMessageLoop(ctx context.Context, wg *sync.WaitGroup, we *worldengine.Wor
 					publishFleetMessage(pub, msgOut)
 				case worldengine.TaskCompleted:
 					publishFleetMessage(pub, msgOut)
+				case worldengine.TaskFailed:
+					publishFleetMessage(pub, msgOut)
 				case worldengine.JoinedMission:
 					publishFleetMessage(pub, msgOut)
 				case worldengine.LeftMission:

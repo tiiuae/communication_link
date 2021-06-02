@@ -1,6 +1,7 @@
 package worldengine
 
 import (
+	"fmt"
 	"log"
 	"sort"
 	"time"
@@ -15,10 +16,12 @@ const (
 	BACKLOG_ITEM_STATUS_QUEUED     = "queued"
 	BACKLOG_ITEM_STATUS_STARTED    = "started"
 	BACKLOG_ITEM_STATUS_COMPLETED  = "completed"
+	BACKLOG_ITEM_STATUS_FAILED     = "failed"
 	TASK_STATUS_CREATED            = "created"
 	TASK_STATUS_QUEUED             = "queued"
-	TASK_STATUS_STARTED            = "inprogress"
+	TASK_STATUS_STARTED            = "started"
 	TASK_STATUS_COMPLETED          = "completed"
+	TASK_STATUS_FAILED             = "failed"
 )
 
 type Drones map[string]*droneState
@@ -216,18 +219,36 @@ func (s *worldState) handleTaskCompleted(msg TaskCompleted) []types.MessageOut {
 	return []types.MessageOut{}
 }
 
+func (s *worldState) handleTaskFailed(msg TaskCompleted) []types.MessageOut {
+	for _, bi := range s.Backlog {
+		if bi.ID == msg.ID {
+			bi.Status = BACKLOG_ITEM_STATUS_FAILED
+			break
+		}
+	}
+
+	if s.isLeader() {
+		return []types.MessageOut{s.createMissionPlan()}
+	}
+
+	return []types.MessageOut{}
+}
+
+var missionResultFilter string = ""
+
 func (s *worldState) handleMissionResult(msg MissionResult) []types.MessageOut {
-	// SeqReached: -1, 0, ... N
-	// Continue if SeqReached is: 2 (point-1 reached), 5 (point-2 reached)...
-	if msg.SeqReached%3 != 2 {
+	key := fmt.Sprintf("%v-%v-%v-%v", msg.InstanceCount, msg.SeqReached, msg.Valid, msg.Finished)
+	if key == missionResultFilter {
+		log.Print("MissionResult: duplicate filter")
 		return []types.MessageOut{}
 	}
+	missionResultFilter = key
 
 	// InstanceCount
 	// 	- usually starts from 1 when no path is yet sent
 	//  - increments by 1 every time a new path is sent
 	// 	- sometimes increments randomly by itself
-	//	  -> doesn't match to any path sent, but SeqReached seems to be -1 always (filtered away above)
+	//	  -> doesn't match to any path sent, but SeqReached seems to be -1 always
 	task := s.getTaskByInstanceCount(msg.InstanceCount)
 	if task == nil {
 		log.Printf("MissionResult: no matching task found for instance count: %d", msg.InstanceCount)
@@ -236,6 +257,17 @@ func (s *worldState) handleMissionResult(msg MissionResult) []types.MessageOut {
 	if task.InstanceID == -1 {
 		log.Printf("MissionResult: matching instance count: %d to task %s", msg.InstanceCount, task.ID)
 		task.InstanceID = msg.InstanceCount
+	}
+
+	if msg.Valid == false {
+		task.Status = TASK_STATUS_FAILED
+		return []types.MessageOut{s.createTaskFailed(task.ID)}
+	}
+
+	// SeqReached: -1, 0, ... N
+	// Continue if SeqReached is: 2 (point-1 reached), 5 (point-2 reached)...
+	if msg.SeqReached%3 != 2 {
+		return []types.MessageOut{}
 	}
 
 	pathIndex := msg.SeqReached / 3
@@ -396,9 +428,24 @@ func (s *worldState) createTaskCompleted(id string) types.MessageOut {
 	}
 }
 
+func (s *worldState) createTaskFailed(id string) types.MessageOut {
+	return types.MessageOut{
+		Timestamp:   time.Now().UTC(),
+		From:        s.MyName,
+		To:          "*",
+		ID:          "id1",
+		MessageType: "task-failed",
+		Message:     TaskFailed{id},
+	}
+}
+
 func (s *worldState) createFlightPlan() types.MessageOut {
 	points := make([]*FlightPlan, 0)
 	for _, t := range s.MyTasks {
+		if t.Status == TASK_STATUS_FAILED {
+			// Skip failed tasks
+			continue
+		}
 		for _, p := range t.Path {
 			points = append(points, &FlightPlan{Reached: p.Reached, X: p.X, Y: p.Y, Z: p.Z})
 		}

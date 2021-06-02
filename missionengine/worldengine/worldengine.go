@@ -76,6 +76,11 @@ func (we *WorldEngine) HandleMessage(msg types.Message, pubPath *ros2.Publisher,
 		json.Unmarshal([]byte(msg.Message), &message)
 		outgoing = state.handleTaskCompleted(message)
 		outgoing = append(outgoing, state.processTasks()...)
+	} else if msg.MessageType == "task-failed" {
+		var message TaskCompleted
+		json.Unmarshal([]byte(msg.Message), &message)
+		outgoing = state.handleTaskFailed(message)
+		outgoing = append(outgoing, state.processTasks()...)
 	} else if msg.MessageType == "mission-result" {
 		var message MissionResult
 		json.Unmarshal([]byte(msg.Message), &message)
@@ -183,6 +188,10 @@ type TaskStarted struct {
 }
 
 type TaskCompleted struct {
+	ID string `json:"id"`
+}
+
+type TaskFailed struct {
 	ID string `json:"id"`
 }
 
