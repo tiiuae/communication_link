@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tiiuae/communication_link/missionengine/types"
+	"github.com/tiiuae/communication_link/missionengine/internal/types"
 )
 
 func Test_parseLogMessage(t *testing.T) {

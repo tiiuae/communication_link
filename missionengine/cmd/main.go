@@ -9,6 +9,14 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/tiiuae/communication_link/missionengine/internal/commands"
+	"github.com/tiiuae/communication_link/missionengine/internal/fleet"
+	"github.com/tiiuae/communication_link/missionengine/internal/flyf4f"
+	"github.com/tiiuae/communication_link/missionengine/internal/gittransport"
+	"github.com/tiiuae/communication_link/missionengine/internal/missionplanner"
+	"github.com/tiiuae/communication_link/missionengine/internal/telemetry"
+	"github.com/tiiuae/communication_link/missionengine/internal/types"
+
 	"github.com/tiiuae/rclgo/pkg/ros2"
 )
 
@@ -53,8 +61,20 @@ func main() {
 		log.Fatal(rclErr)
 	}
 
-	me := New(ctx, &wg, rclLocalNode, rclFleetNode, *deviceID)
-	startCommandHandlers(ctx, &wg, me, rclLocalNode)
+	messagebus := make(chan types.Message, 100)
+	bus := types.NewMessageBus(
+		messagebus,
+		types.NewLogger(),
+		telemetry.New(rclLocalNode, *deviceID),
+		commands.New(rclLocalNode, *deviceID),
+		gittransport.New(*deviceID),
+		missionplanner.New(*deviceID),
+		fleet.New(rclFleetNode, *deviceID),
+		// flypx4.New(rclLocalNode, *deviceID),
+		flyf4f.New(ctx, rclContext, rclLocalNode, *deviceID),
+	)
+
+	go bus.Run(ctx, &wg)
 
 	// wait for termination and close quit to signal all
 	<-terminationSignals

@@ -8,19 +8,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tiiuae/communication_link/missionengine/types"
+	"github.com/tiiuae/communication_link/missionengine/internal/types"
 )
 
-func (me *GitEngine) PushMessages(messages []types.Message) error {
-	dataDir := me.DataDir()
+func (me *GitTransport) pushMessages(messages []types.Message) error {
+	dataDir := me.dataDir
 	for _, msg := range messages {
 		if msg.To == "*" {
 			path, file := outboxFilename(dataDir, msg.From)
-			postMessage(msg.Timestamp, path, file, msg.ID, msg.MessageType, msg.Message)
+			postMessage(msg.Timestamp, path, file, msg.ID, msg.MessageType, msg.Message.(string))
 			log.Printf("Appending: %s/%s (%s -> %s: %s)", strings.TrimPrefix(path, dataDir), file, msg.From, msg.To, msg.MessageType)
 		} else {
 			path, file := inboxFilename(dataDir, msg.From, msg.To)
-			postMessage(msg.Timestamp, path, file, msg.ID, msg.MessageType, msg.Message)
+			postMessage(msg.Timestamp, path, file, msg.ID, msg.MessageType, msg.Message.(string))
 			log.Printf("Appending: %s/%s (%s -> %s: %s)", strings.TrimPrefix(path, dataDir), file, msg.From, msg.To, msg.MessageType)
 		}
 	}

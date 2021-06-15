@@ -1,13 +1,12 @@
-package worldengine
+package missionplanner
 
 import (
-	"fmt"
 	"log"
 	"sort"
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/tiiuae/communication_link/missionengine/types"
+	"github.com/tiiuae/communication_link/missionengine/internal/types"
 )
 
 const (
@@ -27,7 +26,7 @@ const (
 type Drones map[string]*droneState
 type Backlog []*backlogItem
 
-type worldState struct {
+type state struct {
 	// My data
 	MyName  string
 	MyTasks []*myTask
@@ -42,10 +41,9 @@ type droneState struct {
 }
 
 type myTask struct {
-	ID         string
-	Status     string
-	InstanceID int
-	Path       []*taskPoint
+	ID     string
+	Status string
+	Path   []*taskPoint
 }
 
 type taskPoint struct {
@@ -68,8 +66,8 @@ type backlogItem struct {
 	AssignedTo string
 }
 
-func createState(me string) *worldState {
-	return &worldState{
+func createState(me string) *state {
+	return &state{
 		MyName:  me,
 		MyTasks: make([]*myTask, 0),
 		Backlog: make([]*backlogItem, 0),
@@ -77,20 +75,20 @@ func createState(me string) *worldState {
 	}
 }
 
-func (s *worldState) handleDroneAdded(msg DroneAdded) []types.MessageOut {
+func (s *state) handleDroneAdded(msg types.DroneAdded) []types.Message {
 	name := msg.Name
 	s.Drones[name] = &droneState{name}
 
-	return []types.MessageOut{}
+	return []types.Message{}
 }
 
-func (s *worldState) handleDroneRemoved(msg DroneRemoved) []types.MessageOut {
+func (s *state) handleDroneRemoved(msg types.DroneRemoved) []types.Message {
 	delete(s.Drones, msg.Name)
 
-	return []types.MessageOut{}
+	return []types.Message{}
 }
 
-func (s *worldState) handleFlyToTaskCreated(msg FlyToTaskCreated) []types.MessageOut {
+func (s *state) handleFlyToTaskCreated(msg types.FlyToTaskCreated) []types.Message {
 	// Add task to backlog
 	bi := backlogItem{
 		ID:     msg.ID,
@@ -103,10 +101,10 @@ func (s *worldState) handleFlyToTaskCreated(msg FlyToTaskCreated) []types.Messag
 	}
 	s.Backlog = append(s.Backlog, &bi)
 
-	return []types.MessageOut{}
+	return []types.Message{}
 }
 
-func (s *worldState) handleExecutePredefinedToTaskCreated(msg ExecutePredefinedTaskCreated) []types.MessageOut {
+func (s *state) handleExecutePredefinedToTaskCreated(msg types.ExecutePredefinedTaskCreated) []types.Message {
 	// Add task to backlog
 	bi := backlogItem{
 		ID:     msg.ID,
@@ -119,10 +117,10 @@ func (s *worldState) handleExecutePredefinedToTaskCreated(msg ExecutePredefinedT
 	}
 	s.Backlog = append(s.Backlog, &bi)
 
-	return []types.MessageOut{}
+	return []types.Message{}
 }
 
-func (s *worldState) handleTasksAssigned(msg TasksAssigned) []types.MessageOut {
+func (s *state) handleTasksAssigned(msg types.TasksAssigned) []types.Message {
 	for droneName, tasks := range msg.Tasks {
 		for _, task := range tasks {
 			bi, found := s.getBacklogItem(task.ID)
@@ -148,14 +146,14 @@ func (s *worldState) handleTasksAssigned(msg TasksAssigned) []types.MessageOut {
 
 	// Leader posts fleets mission plan
 	if s.isLeader() {
-		return []types.MessageOut{s.createMissionPlan()}
+		return []types.Message{s.createMissionPlan()}
 	}
 
-	return []types.MessageOut{}
+	return []types.Message{}
 }
 
-func (s *worldState) processTasks() []types.MessageOut {
-	result := make([]types.MessageOut, 0)
+func (s *state) processTasks() []types.Message {
+	result := make([]types.Message, 0)
 	result = append(result, s.queueTasks()...)
 
 	queued := s.getCurrentTask()
@@ -166,7 +164,7 @@ func (s *worldState) processTasks() []types.MessageOut {
 
 	if queued.Status == TASK_STATUS_QUEUED {
 		queued.Status = TASK_STATUS_STARTED
-		result = append(result, s.createFlyToMessages(generatePoints(queued))...)
+		result = append(result, s.createFlyToMessages(queued.ID, generatePoints(queued))...)
 		result = append(result, s.createFlightPlan())
 		result = append(result, s.createTaskStarted(queued.ID))
 	}
@@ -174,7 +172,7 @@ func (s *worldState) processTasks() []types.MessageOut {
 	return result
 }
 
-func (s *worldState) handleTaskQueued(msg TaskCompleted) []types.MessageOut {
+func (s *state) handleTaskQueued(msg types.TaskQueued) []types.Message {
 	for _, bi := range s.Backlog {
 		if bi.ID == msg.ID {
 			bi.Status = BACKLOG_ITEM_STATUS_QUEUED
@@ -183,13 +181,13 @@ func (s *worldState) handleTaskQueued(msg TaskCompleted) []types.MessageOut {
 	}
 
 	if s.isLeader() {
-		return []types.MessageOut{s.createMissionPlan()}
+		return []types.Message{s.createMissionPlan()}
 	}
 
-	return []types.MessageOut{}
+	return []types.Message{}
 }
 
-func (s *worldState) handleTaskStarted(msg TaskCompleted) []types.MessageOut {
+func (s *state) handleTaskStarted(msg types.TaskStarted) []types.Message {
 	for _, bi := range s.Backlog {
 		if bi.ID == msg.ID {
 			bi.Status = BACKLOG_ITEM_STATUS_STARTED
@@ -198,13 +196,13 @@ func (s *worldState) handleTaskStarted(msg TaskCompleted) []types.MessageOut {
 	}
 
 	if s.isLeader() {
-		return []types.MessageOut{s.createMissionPlan()}
+		return []types.Message{s.createMissionPlan()}
 	}
 
-	return []types.MessageOut{}
+	return []types.Message{}
 }
 
-func (s *worldState) handleTaskCompleted(msg TaskCompleted) []types.MessageOut {
+func (s *state) handleTaskCompleted(msg types.TaskCompleted) []types.Message {
 	for _, bi := range s.Backlog {
 		if bi.ID == msg.ID {
 			bi.Status = BACKLOG_ITEM_STATUS_COMPLETED
@@ -213,13 +211,13 @@ func (s *worldState) handleTaskCompleted(msg TaskCompleted) []types.MessageOut {
 	}
 
 	if s.isLeader() {
-		return []types.MessageOut{s.createMissionPlan()}
+		return []types.Message{s.createMissionPlan()}
 	}
 
-	return []types.MessageOut{}
+	return []types.Message{}
 }
 
-func (s *worldState) handleTaskFailed(msg TaskCompleted) []types.MessageOut {
+func (s *state) handleTaskFailed(msg types.TaskFailed) []types.Message {
 	for _, bi := range s.Backlog {
 		if bi.ID == msg.ID {
 			bi.Status = BACKLOG_ITEM_STATUS_FAILED
@@ -228,85 +226,53 @@ func (s *worldState) handleTaskFailed(msg TaskCompleted) []types.MessageOut {
 	}
 
 	if s.isLeader() {
-		return []types.MessageOut{s.createMissionPlan()}
+		return []types.Message{s.createMissionPlan()}
 	}
 
-	return []types.MessageOut{}
+	return []types.Message{}
 }
 
-var missionResultFilter string = ""
-
-func (s *worldState) handleMissionResult(msg MissionResult) []types.MessageOut {
-	key := fmt.Sprintf("%v-%v-%v-%v", msg.InstanceCount, msg.SeqReached, msg.Valid, msg.Finished)
-	if key == missionResultFilter {
-		log.Print("MissionResult: duplicate filter")
-		return []types.MessageOut{}
-	}
-	missionResultFilter = key
-
-	// InstanceCount
-	// 	- usually starts from 1 when no path is yet sent
-	//  - increments by 1 every time a new path is sent
-	// 	- sometimes increments randomly by itself
-	//	  -> doesn't match to any path sent, but SeqReached seems to be -1 always
-	task := s.getTaskByInstanceCount(msg.InstanceCount)
-	if task == nil {
-		log.Printf("MissionResult: no matching task found for instance count: %d", msg.InstanceCount)
-		return []types.MessageOut{}
-	}
-	if task.InstanceID == -1 {
-		log.Printf("MissionResult: matching instance count: %d to task %s", msg.InstanceCount, task.ID)
-		task.InstanceID = msg.InstanceCount
+func (s *state) handleFlyPathProgress(msg types.FlyPathProgress) []types.Message {
+	task, found := s.getTask(msg.ID)
+	if !found {
+		log.Printf("handleFlyPathProgress: task '%s' not found", msg.ID)
+		return []types.Message{}
 	}
 
-	if msg.Valid == false {
+	if msg.Failed {
 		task.Status = TASK_STATUS_FAILED
-		return []types.MessageOut{s.createTaskFailed(task.ID)}
+		return []types.Message{s.createTaskFailed(task.ID)}
 	}
 
-	// SeqReached: -1, 0, ... N
-	// Continue if SeqReached is: 2 (point-1 reached), 5 (point-2 reached)...
-	if msg.SeqReached%3 != 2 {
-		return []types.MessageOut{}
-	}
-
-	pathIndex := msg.SeqReached / 3
-	result := make([]types.MessageOut, 0)
-	for pi, p := range task.Path {
-		if pi <= pathIndex {
-			p.Reached = true
-			if pi == len(task.Path)-1 {
-				if task.Status != TASK_STATUS_COMPLETED {
-					result = append(result, s.createTaskCompleted(task.ID))
-				}
-				task.Status = TASK_STATUS_COMPLETED
-				nextTask := s.getCurrentTask()
-				if nextTask == nil {
-					// Last task on my backlog -> land the drone
-					result = append(result, s.createLandMessage())
-				}
-			}
+	if msg.PathCompleted {
+		for _, x := range task.Path {
+			x.Reached = true
 		}
+		task.Status = TASK_STATUS_COMPLETED
+		result := make([]types.Message, 0)
+		result = append(result, s.createTaskCompleted(task.ID))
+		nextTask := s.getCurrentTask()
+		if nextTask == nil {
+			// Last task on my backlog -> land the drone
+			result = append(result, s.createLandMessage())
+		}
+		result = append(result, s.createFlightPlan())
+
+		return result
 	}
 
-	if msg.Finished == true && task.Status != TASK_STATUS_COMPLETED {
-		panic("TODO: MissionResult mismatch")
-	}
-
-	result = append(result, s.createFlightPlan())
-
-	return result
+	return []types.Message{}
 }
 
-func (s *worldState) process() []types.MessageOut {
+func (s *state) process() []types.Message {
 	if !s.isLeader() {
-		return []types.MessageOut{}
+		return []types.Message{}
 	}
 
 	return s.createTasksAssigned()
 }
 
-func createMyTask(t *TaskAssignment, droneName string) (*myTask, error) {
+func createMyTask(t *types.TaskAssignment, droneName string) (*myTask, error) {
 	path := make([]*taskPoint, 0)
 	if t.Type == "fly-to" {
 		path = append(path, &taskPoint{Reached: false, X: t.X, Y: t.Y, Z: t.Z})
@@ -321,70 +287,47 @@ func createMyTask(t *TaskAssignment, droneName string) (*myTask, error) {
 	}
 
 	return &myTask{
-		ID:         t.ID,
-		Status:     TASK_STATUS_CREATED,
-		InstanceID: -1,
-		Path:       path,
+		ID:     t.ID,
+		Status: TASK_STATUS_CREATED,
+		Path:   path,
 	}, nil
 }
 
-func tasksEqual(t1 []*myTask, t2 []*myTask) bool {
-	if len(t1) != len(t2) {
-		return false
-	}
-
-	for i := 0; i < len(t1); i++ {
-		if t1[i].ID != t2[i].ID {
-			return false
-		}
-	}
-
-	return true
-}
-
-func generatePoints(task *myTask) []Point {
-	points := make([]Point, 0)
+func generatePoints(task *myTask) []types.Point {
+	points := make([]types.Point, 0)
 	for _, p := range task.Path {
-		points = append(points, Point{X: p.X, Y: p.Y, Z: p.Z})
+		points = append(points, types.Point{X: p.X, Y: p.Y, Z: p.Z})
 	}
 
 	return points
 }
 
-func (s *worldState) createFlyToMessages(points []Point) []types.MessageOut {
-	return []types.MessageOut{
+func (s *state) createFlyToMessages(id string, points []types.Point) []types.Message {
+	return []types.Message{
 		{
 			Timestamp:   time.Now().UTC(),
 			From:        s.MyName,
 			To:          s.MyName,
 			ID:          "id1",
-			MessageType: "flight-path",
-			Message:     FlightPath{points},
-		},
-		{
-			Timestamp:   time.Now().UTC(),
-			From:        s.MyName,
-			To:          s.MyName,
-			ID:          "id1",
-			MessageType: "start-mission",
-			Message:     StartMission{Delay: time.Duration(len(points)*100) * time.Millisecond},
+			MessageType: "fly-path",
+			Message:     types.FlyPath{id, points},
 		},
 	}
 }
 
-func (s *worldState) createLandMessage() types.MessageOut {
-	return types.MessageOut{
+func (s *state) createLandMessage() types.Message {
+	return types.Message{
 		Timestamp:   time.Now().UTC(),
 		From:        s.MyName,
 		To:          s.MyName,
 		ID:          "id1",
 		MessageType: "land",
-		Message:     Land{},
+		Message:     types.Land{},
 	}
 }
 
-func (s *worldState) queueTasks() []types.MessageOut {
-	result := make([]types.MessageOut, 0)
+func (s *state) queueTasks() []types.Message {
+	result := make([]types.Message, 0)
 	for _, x := range s.MyTasks {
 		if x.Status == TASK_STATUS_CREATED {
 			x.Status = TASK_STATUS_QUEUED
@@ -395,62 +338,62 @@ func (s *worldState) queueTasks() []types.MessageOut {
 	return result
 }
 
-func (s *worldState) createTaskQueued(id string) types.MessageOut {
-	return types.MessageOut{
+func (s *state) createTaskQueued(id string) types.Message {
+	return types.Message{
 		Timestamp:   time.Now().UTC(),
 		From:        s.MyName,
 		To:          "*",
 		ID:          "id1",
 		MessageType: "task-queued",
-		Message:     TaskQueued{id},
+		Message:     types.TaskQueued{id},
 	}
 }
 
-func (s *worldState) createTaskStarted(id string) types.MessageOut {
-	return types.MessageOut{
+func (s *state) createTaskStarted(id string) types.Message {
+	return types.Message{
 		Timestamp:   time.Now().UTC(),
 		From:        s.MyName,
 		To:          "*",
 		ID:          "id1",
 		MessageType: "task-started",
-		Message:     TaskStarted{id},
+		Message:     types.TaskStarted{id},
 	}
 }
 
-func (s *worldState) createTaskCompleted(id string) types.MessageOut {
-	return types.MessageOut{
+func (s *state) createTaskCompleted(id string) types.Message {
+	return types.Message{
 		Timestamp:   time.Now().UTC(),
 		From:        s.MyName,
 		To:          "*",
 		ID:          "id1",
 		MessageType: "task-completed",
-		Message:     TaskCompleted{id},
+		Message:     types.TaskCompleted{id},
 	}
 }
 
-func (s *worldState) createTaskFailed(id string) types.MessageOut {
-	return types.MessageOut{
+func (s *state) createTaskFailed(id string) types.Message {
+	return types.Message{
 		Timestamp:   time.Now().UTC(),
 		From:        s.MyName,
 		To:          "*",
 		ID:          "id1",
 		MessageType: "task-failed",
-		Message:     TaskFailed{id},
+		Message:     types.TaskFailed{id},
 	}
 }
 
-func (s *worldState) createFlightPlan() types.MessageOut {
-	points := make([]*FlightPlan, 0)
+func (s *state) createFlightPlan() types.Message {
+	points := make([]*types.FlightPlan, 0)
 	for _, t := range s.MyTasks {
 		if t.Status == TASK_STATUS_FAILED {
 			// Skip failed tasks
 			continue
 		}
 		for _, p := range t.Path {
-			points = append(points, &FlightPlan{Reached: p.Reached, X: p.X, Y: p.Y, Z: p.Z})
+			points = append(points, &types.FlightPlan{Reached: p.Reached, X: p.X, Y: p.Y, Z: p.Z})
 		}
 	}
-	return types.MessageOut{
+	return types.Message{
 		Timestamp:   time.Now().UTC(),
 		From:        s.MyName,
 		To:          "*",
@@ -460,10 +403,10 @@ func (s *worldState) createFlightPlan() types.MessageOut {
 	}
 }
 
-func (s *worldState) createTasksAssigned() []types.MessageOut {
+func (s *state) createTasksAssigned() []types.Message {
 	drones := s.Drones.names()
-	result := TasksAssigned{
-		Tasks: make(map[string][]*TaskAssignment),
+	result := types.TasksAssigned{
+		Tasks: make(map[string][]*types.TaskAssignment),
 	}
 	for i, bi := range s.Backlog {
 		// Skip completed tasks
@@ -484,7 +427,7 @@ func (s *worldState) createTasksAssigned() []types.MessageOut {
 			bi.Status = BACKLOG_ITEM_STATUS_ASSIGNED
 		}
 
-		task := TaskAssignment{
+		task := types.TaskAssignment{
 			Type: bi.Type,
 			ID:   bi.ID,
 			X:    bi.X,
@@ -496,10 +439,10 @@ func (s *worldState) createTasksAssigned() []types.MessageOut {
 	}
 
 	if len(result.Tasks) == 0 {
-		return []types.MessageOut{}
+		return []types.Message{}
 	}
 
-	return []types.MessageOut{
+	return []types.Message{
 		{
 			Timestamp:   time.Now().UTC(),
 			From:        s.MyName,
@@ -511,10 +454,10 @@ func (s *worldState) createTasksAssigned() []types.MessageOut {
 	}
 }
 
-func (s *worldState) createMissionPlan() types.MessageOut {
-	result := make([]*MissionPlan, 0)
+func (s *state) createMissionPlan() types.Message {
+	result := make([]*types.MissionPlan, 0)
 	for _, bi := range s.Backlog {
-		mp := &MissionPlan{
+		mp := &types.MissionPlan{
 			ID:         bi.ID,
 			AssignedTo: bi.AssignedTo,
 			Status:     bi.Status,
@@ -523,7 +466,7 @@ func (s *worldState) createMissionPlan() types.MessageOut {
 		result = append(result, mp)
 	}
 
-	return types.MessageOut{
+	return types.Message{
 		Timestamp:   time.Now().UTC(),
 		From:        s.MyName,
 		To:          "*",
@@ -543,20 +486,7 @@ func (drones *Drones) names() []string {
 	return result
 }
 
-func smallestString(values []string) string {
-	if len(values) == 0 {
-		return ""
-	}
-	result := values[0]
-	for _, v := range values {
-		if v < result {
-			result = v
-		}
-	}
-	return result
-}
-
-func (s *worldState) isLeader() bool {
+func (s *state) isLeader() bool {
 	if len(s.Drones) == 0 {
 		return false
 	}
@@ -571,7 +501,7 @@ func (s *worldState) isLeader() bool {
 	return keys[0] == s.MyName
 }
 
-func (s *worldState) getTask(ID string) (*myTask, bool) {
+func (s *state) getTask(ID string) (*myTask, bool) {
 	for _, x := range s.MyTasks {
 		if x.ID == ID {
 			return x, true
@@ -581,7 +511,7 @@ func (s *worldState) getTask(ID string) (*myTask, bool) {
 	return nil, false
 }
 
-func (s *worldState) getBacklogItem(ID string) (*backlogItem, bool) {
+func (s *state) getBacklogItem(ID string) (*backlogItem, bool) {
 	for _, x := range s.Backlog {
 		if x.ID == ID {
 			return x, true
@@ -591,29 +521,10 @@ func (s *worldState) getBacklogItem(ID string) (*backlogItem, bool) {
 	return nil, false
 }
 
-func (s *worldState) getCurrentTask() *myTask {
+func (s *state) getCurrentTask() *myTask {
 	for _, task := range s.MyTasks {
 		if task.Status != TASK_STATUS_COMPLETED {
 			return task
-		}
-	}
-
-	return nil
-}
-
-func (s *worldState) getTaskByInstanceCount(instanceCount int) *myTask {
-	if len(s.MyTasks) == 0 {
-		return nil
-	}
-
-	for _, t := range s.MyTasks {
-		if t.InstanceID == instanceCount {
-			// Match found
-			return t
-		}
-		if t.InstanceID == -1 && t.Status == TASK_STATUS_STARTED {
-			// First unmatched inprogress task
-			return t
 		}
 	}
 

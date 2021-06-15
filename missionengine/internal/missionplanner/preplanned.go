@@ -1,4 +1,4 @@
-package worldengine
+package missionplanner
 
 import (
 	"encoding/json"

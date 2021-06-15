@@ -8,16 +8,17 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/tiiuae/communication_link/missionengine/types"
+	"github.com/tiiuae/communication_link/missionengine/internal/types"
 )
 
-func (me *GitEngine) PullMessages(droneName string) []types.Message {
+func (me *GitTransport) pullMessages() []types.Message {
+	droneName := me.deviceID
 	newCommits := me.pullFiles()
 	messages := make([]types.Message, 0)
 	if newCommits {
 		filesChanged := me.diffFiles()
 		for _, absPath := range filesChanged {
-			relPath := strings.TrimPrefix(absPath, me.DataDir())
+			relPath := strings.TrimPrefix(absPath, me.dataDir)
 			from, to := parseFilename(relPath)
 			if (to == droneName || to == "*") && from != droneName {
 				log.Printf("Parsing log file: %s", relPath)
@@ -33,8 +34,8 @@ func (me *GitEngine) PullMessages(droneName string) []types.Message {
 	return messages
 }
 
-func (me *GitEngine) diffFiles() []string {
-	dataDir := me.DataDir()
+func (me *GitTransport) diffFiles() []string {
+	dataDir := me.dataDir
 	cache := me.fileChanges
 	results := make([]string, 0)
 	filepath.Walk(dataDir, func(root string, info os.FileInfo, err error) error {
@@ -66,7 +67,7 @@ func (me *GitEngine) diffFiles() []string {
 	return results
 }
 
-func (me *GitEngine) readFile(filename string) ([]string, error) {
+func (me *GitTransport) readFile(filename string) ([]string, error) {
 	pos := me.filePositions[filename]
 	lines, newPos, err := readLinesFrom(filename, pos)
 	me.filePositions[filename] = newPos

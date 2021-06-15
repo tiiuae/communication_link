@@ -1,4 +1,4 @@
-package worldengine
+package types
 
 type Point struct {
 	X float64

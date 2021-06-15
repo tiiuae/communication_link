@@ -6,7 +6,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/tiiuae/communication_link/missionengine/types"
+	"github.com/tiiuae/communication_link/missionengine/internal/types"
 )
 
 func parseLogMessages(filename string, lines []string) []types.Message {
