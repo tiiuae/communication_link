@@ -346,6 +346,11 @@ func publishMissionState(ctx context.Context, wg *sync.WaitGroup, mqttClient mqt
 }
 
 func StartCommandHandlers(ctx context.Context, wg *sync.WaitGroup, mqttClient mqtt.Client, node *ros2.Node, deviceID string) {
+	missionDataRecorderConfigPub := ros2app.NewPublisher(
+		node,
+		"mission_data_recorder/config",
+		"std_msgs/String",
+	)
 
 	controlCommands := make(chan string)
 	missionCommands := make(chan string)
@@ -388,17 +393,20 @@ func StartCommandHandlers(ctx context.Context, wg *sync.WaitGroup, mqttClient mq
 			log.Printf("Failed to unmarshal config yaml: %v", err)
 			return
 		}
-		wifiYaml, ok := yamlConfig["initial-wifi"]
-		if !ok {
+		if wifiYaml, ok := yamlConfig["initial-wifi"]; ok {
+			wifiJson, err := json.Marshal(wifiYaml)
+			if err == nil {
+				go publishMeshConfig(node, string(wifiJson))
+			} else {
+				log.Printf("Failed to marshal mesh json: %v", err)
+			}
+		} else {
 			log.Println("initial-wifi -configuration missing -> mesh not configured")
-			return
 		}
-		wifiJson, err := json.Marshal(wifiYaml)
-		if err != nil {
-			log.Printf("Failed to marshal mesh json: %v", err)
-			return
-		}
-		go publishMeshConfig(node, string(wifiJson))
+		go publishMissionDataRecorderConfig(
+			missionDataRecorderConfigPub,
+			yamlConfig["mission-data-recorder"],
+		)
 	})
 	if err := configToken.Error(); err != nil {
 		log.Fatalf("Error on subscribe: %v", err)
@@ -423,4 +431,21 @@ func publishMeshConfig(node *ros2.Node, json string) {
 	time.Sleep(5 * time.Second)
 	pub.Publish(ros2app.CreateString(string(json)))
 	log.Printf("Mesh parameters sent")
+}
+
+func publishMissionDataRecorderConfig(pub *ros2.Publisher, configYaml interface{}) {
+	if configYaml == nil {
+		log.Println("mission-data-recorder config was not included")
+		return
+	}
+	config, err := yaml.Marshal(configYaml)
+	if err != nil {
+		log.Println("Failed to encode mission-data-recorder config:", err)
+		return
+	}
+	if err = pub.Publish(ros2app.CreateString(string(config))); err != nil {
+		log.Println("Failed to publish mission-data-recorder config:", err)
+		return
+	}
+	log.Println("mission-data-recorder config published")
 }
