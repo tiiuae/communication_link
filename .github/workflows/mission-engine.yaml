@@ -46,7 +46,8 @@ jobs:
             git-core \
             make \
             python3-bloom \
-            ros-foxy-px4-msgs
+            ros-foxy-px4-msgs \
+            ros-foxy-fog-msgs
 
       - name: Build debian package
         run: |
