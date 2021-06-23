@@ -91,16 +91,14 @@ func publishMessages(ctx context.Context, armingService *ros2.Client, takeoffSer
 			}
 			log.Printf("F4F: ARMING: %v", res)
 		case TakeOff:
-			req := std_srvs.NewSetBool_Request()
-			req.Data = true
+			req := std_srvs.NewTrigger_Request()
 			res, _, err := takeoffService.Send(ctx, req)
 			if err != nil {
 				log.Fatalf("%v", err)
 			}
 			log.Printf("F4F: TAKEOFF: %v", res)
 		case types.Land:
-			req := std_srvs.NewSetBool_Request()
-			req.Data = true
+			req := std_srvs.NewTrigger_Request()
 			res, _, err := landingService.Send(ctx, req)
 			if err != nil {
 				log.Fatalf("%v", err)
@@ -170,7 +168,7 @@ func (f4f *f4f) runF4FSubscriber(ctx context.Context, wg *sync.WaitGroup) {
 
 func createTakeoffService(ctx context.Context, rclContext *ros2.Context, node *ros2.Node) *ros2.Client {
 	opt := &ros2.ClientOptions{Qos: ros2.NewRmwQosProfileServicesDefault()}
-	client, err := node.NewClient("control_interface/takeoff", std_srvs.SetBool, opt)
+	client, err := node.NewClient("control_interface/takeoff", std_srvs.Trigger, opt)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
@@ -188,7 +186,7 @@ func createTakeoffService(ctx context.Context, rclContext *ros2.Context, node *r
 
 func createLandingService(ctx context.Context, rclContext *ros2.Context, node *ros2.Node) *ros2.Client {
 	opt := &ros2.ClientOptions{Qos: ros2.NewRmwQosProfileServicesDefault()}
-	client, err := node.NewClient("control_interface/land", std_srvs.SetBool, opt)
+	client, err := node.NewClient("control_interface/land", std_srvs.Trigger, opt)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
@@ -224,7 +222,7 @@ func createArmingService(ctx context.Context, rclContext *ros2.Context, node *ro
 
 func createWaypointService(ctx context.Context, rclContext *ros2.Context, node *ros2.Node) *ros2.Client {
 	opt := &ros2.ClientOptions{Qos: ros2.NewRmwQosProfileServicesDefault()}
-	client, err := node.NewClient("navigation/waypoint_in", fog_msgs.Vec4, opt)
+	client, err := node.NewClient("navigation/local_waypoint", fog_msgs.Vec4, opt)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
