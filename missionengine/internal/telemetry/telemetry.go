@@ -22,7 +22,7 @@ func New(node *ros2.Node, deviceID string) types.MessageHandler {
 
 func (t *telemetry) Run(ctx context.Context, wg *sync.WaitGroup, post types.PostFn) {
 	go t.runVehicleStatusSubscriber(ctx, wg, post)
-	go t.runVehiclePositionSubscriber(ctx, wg, post)
+	// go t.runVehiclePositionSubscriber(ctx, wg, post)
 }
 
 func (t *telemetry) Receive(message types.Message) {
@@ -63,28 +63,28 @@ func (t *telemetry) runVehicleStatusSubscriber(ctx context.Context, wg *sync.Wai
 	}
 }
 
-func (t *telemetry) runVehiclePositionSubscriber(ctx context.Context, wg *sync.WaitGroup, post types.PostFn) {
-	wg.Add(1)
-	defer wg.Done()
+// func (t *telemetry) runVehiclePositionSubscriber(ctx context.Context, wg *sync.WaitGroup, post types.PostFn) {
+// 	wg.Add(1)
+// 	defer wg.Done()
 
-	sub, rclErr := t.node.NewSubscription("VehicleGlobalPosition_PubSubTopic", &px4_msgs.VehicleGlobalPosition{}, func(s *ros2.Subscription) {
-		var m px4_msgs.VehicleGlobalPosition
-		_, rlcErr := s.TakeMessage(&m)
-		if rlcErr != nil {
-			log.Print("TakeMessage failed: runVehiclePositionSubscriber")
-			return
-		}
+// 	sub, rclErr := t.node.NewSubscription("VehicleGlobalPosition_PubSubTopic", &px4_msgs.VehicleGlobalPosition{}, func(s *ros2.Subscription) {
+// 		var m px4_msgs.VehicleGlobalPosition
+// 		_, rlcErr := s.TakeMessage(&m)
+// 		if rlcErr != nil {
+// 			log.Print("TakeMessage failed: runVehiclePositionSubscriber")
+// 			return
+// 		}
 
-		out := types.GlobalPosition{Lat: m.Lat, Lon: m.Lon, Alt: float64(m.Alt)}
-		post(types.CreateMessage("global-position", t.deviceID, t.deviceID, out))
-	})
+// 		out := types.GlobalPosition{Lat: m.Lat, Lon: m.Lon, Alt: float64(m.Alt)}
+// 		post(types.CreateMessage("global-position", t.deviceID, t.deviceID, out))
+// 	})
 
-	if rclErr != nil {
-		log.Fatalf("Unable to subscribe to topic 'VehicleGlobalPosition_PubSubTopic': %v", rclErr)
-	}
+// 	if rclErr != nil {
+// 		log.Fatalf("Unable to subscribe to topic 'VehicleGlobalPosition_PubSubTopic': %v", rclErr)
+// 	}
 
-	err := sub.Spin(ctx, 5*time.Second)
-	if err != nil {
-		log.Printf("Subscription failed: %v", err)
-	}
-}
+// 	err := sub.Spin(ctx, 5*time.Second)
+// 	if err != nil {
+// 		log.Printf("Subscription failed: %v", err)
+// 	}
+// }

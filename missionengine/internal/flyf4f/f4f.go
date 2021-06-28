@@ -64,8 +64,6 @@ func (f4f *f4f) runMessageLoop(ctx context.Context, wg *sync.WaitGroup, post typ
 			case types.VehicleState:
 				f4f.state.handleVehicleState(m)
 				publishMessages(ctx, armingService, takeoffService, waypointService, landingService, post, f4f.state.process())
-			case types.GlobalPosition:
-				f4f.state.handleGlobalPosition(m)
 			case NavigationStatus:
 				f4f.state.handleNavigationStatus(m)
 				publishMessages(ctx, armingService, takeoffService, waypointService, landingService, post, f4f.state.process())
@@ -222,7 +220,7 @@ func createArmingService(ctx context.Context, rclContext *ros2.Context, node *ro
 
 func createWaypointService(ctx context.Context, rclContext *ros2.Context, node *ros2.Node) *ros2.Client {
 	opt := &ros2.ClientOptions{Qos: ros2.NewRmwQosProfileServicesDefault()}
-	client, err := node.NewClient("navigation/local_waypoint", fog_msgs.Vec4, opt)
+	client, err := node.NewClient("navigation/gps_waypoint", fog_msgs.Vec4, opt)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}

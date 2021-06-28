@@ -50,7 +50,6 @@ const (
 )
 
 type state struct {
-	initialPosition      *types.GlobalPosition
 	armState             armState
 	flightState          flightState
 	lastVehicleState     types.VehicleState
@@ -60,7 +59,6 @@ type state struct {
 
 func newState() *state {
 	return &state{
-		nil,
 		armInitializing,
 		flightGround,
 		types.VehicleState{ArmingState: types.ArmingStateInit0, NavigationState: types.NavigationStateLandMode18},
@@ -89,13 +87,6 @@ func (s *state) handleVehicleState(msg types.VehicleState) {
 	}
 }
 
-func (s *state) handleGlobalPosition(msg types.GlobalPosition) {
-	if s.initialPosition == nil {
-		log.Printf("F4F: Initial position set: %v", msg)
-		s.initialPosition = &msg
-	}
-}
-
 func (s *state) handleNavigationStatus(msg NavigationStatus) {
 	lastStatus := s.lastNavigationStatus.Status
 	s.lastNavigationStatus = msg
@@ -113,9 +104,7 @@ func (s *state) handleNavigationStatus(msg NavigationStatus) {
 func (s *state) handleFlyPath(msg types.FlyPath) {
 	points := make([]types.Point, 0)
 	for _, x := range msg.Points {
-		// Note: Point.X is really latitude
-		dx, dy := deltaXY(s.initialPosition.Lon, s.initialPosition.Lat, x.Y, x.X)
-		points = append(points, types.Point{X: dx, Y: dy, Z: x.Z})
+		points = append(points, types.Point{X: x.X, Y: x.Y, Z: x.Z})
 	}
 	task := f4ftask{
 		msg.ID,
