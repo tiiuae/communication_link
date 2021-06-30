@@ -187,7 +187,7 @@ func updateBacklog(pubMissions *ros2.Publisher) {
 }
 
 // handleControlCommand takes a command string and forwards it to mavlinkcmd
-func handleControlCommand(command, deviceID string, mqttClient mqtt.Client, pubMavlink *ros2.Publisher, pubMissions *ros2.Publisher) {
+func handleControlCommand(ctx context.Context, command, deviceID string, mqttClient mqtt.Client, pubMissions *ros2.Publisher, armingService *ros2.Client, takeoffService *ros2.Client, landingService *ros2.Client) {
 	var cmd controlCommand
 	err := json.Unmarshal([]byte(command), &cmd)
 	if err != nil {
@@ -209,30 +209,11 @@ func handleControlCommand(command, deviceID string, mqttClient mqtt.Client, pubM
 		log.Printf("Backend requesting to update backlog")
 		updateBacklog(pubMissions)
 	case "takeoff":
-		log.Printf("Publishing 'takeoff' to /mavlinkcmd")
-		pubMavlink.Publish(ros2app.CreateString("takeoff"))
+		log.Printf("F4F takeoff service call")
+		takeoff(ctx, armingService, takeoffService)
 	case "land":
-		log.Printf("Publishing 'land' to /mavlinkcmd")
-		pubMavlink.Publish(ros2app.CreateString("land"))
-	case "start_mission":
-		log.Printf("Publishing 'start_mission' to /mavlinkcmd")
-		pubMavlink.Publish(ros2app.CreateString("start_mission"))
-	case "pause_mission":
-		log.Printf("Publishing 'pause_mission' to /mavlinkcmd")
-		pubMavlink.Publish(ros2app.CreateString("pause_mission"))
-	case "resume_mission":
-		log.Printf("Publishing 'resume_mission' to /mavlinkcmd")
-		pubMavlink.Publish(ros2app.CreateString("resume_mission"))
-	case "return_home":
-		log.Printf("Publishing 'return_home' to /mavlinkcmd")
-		pubMavlink.Publish(ros2app.CreateString("return_home"))
-	//case "plan":
-	//	log.Printf("Publishing 'plan' to /mavlinkcmd")
-	//	msg.SetText("plan")
-	//	err := pub.Publish(msg.GetMessage(), msg.GetData())
-	//	if err != nil {
-	//		log.Fatalf("Publish failed: %v", err)
-	//	}
+		log.Printf("F4F land service call")
+		land(ctx, landingService)
 	default:
 		log.Printf("Unknown command: %v", command)
 	}
@@ -278,18 +259,25 @@ func handleGstreamerCommand(command string, pub *ros2.Publisher) {
 }
 
 // handleControlCommands routine waits for commands and executes them. The routine quits when quit channel is closed
-func handleControlCommands(ctx context.Context, wg *sync.WaitGroup, mqttClient mqtt.Client, node *ros2.Node, commands <-chan string, deviceID string) {
+func handleControlCommands(ctx context.Context, wg *sync.WaitGroup, mqttClient mqtt.Client, rclContext *ros2.Context, node *ros2.Node, commands <-chan string, deviceID string) {
 	wg.Add(1)
 	defer wg.Done()
-	pubMavlink := ros2app.NewPublisher(node, "mavlinkcmd", "std_msgs/String")
 	pubMissions := ros2app.NewPublisher(node, "missions", "std_msgs/String")
+	armingService := createArmingService(ctx, rclContext, node)
+	takeoffService := createTakeoffService(ctx, rclContext, node)
+	landingService := createLandingService(ctx, rclContext, node)
+
+	defer pubMissions.Close()
+	defer takeoffService.Close()
+	defer armingService.Close()
+
+	defer landingService.Close()
 	for {
 		select {
 		case <-ctx.Done():
-			pubMavlink.Close()
 			return
 		case command := <-commands:
-			handleControlCommand(command, deviceID, mqttClient, pubMavlink, pubMissions)
+			handleControlCommand(ctx, command, deviceID, mqttClient, pubMissions, armingService, takeoffService, landingService)
 		}
 	}
 }
@@ -345,7 +333,7 @@ func publishMissionState(ctx context.Context, wg *sync.WaitGroup, mqttClient mqt
 	}
 }
 
-func StartCommandHandlers(ctx context.Context, wg *sync.WaitGroup, mqttClient mqtt.Client, node *ros2.Node, deviceID string) {
+func StartCommandHandlers(ctx context.Context, wg *sync.WaitGroup, mqttClient mqtt.Client, rclContext *ros2.Context, node *ros2.Node, deviceID string) {
 	missionDataRecorderConfigPub := ros2app.NewPublisher(
 		node,
 		"mission_data_recorder/config",
@@ -356,7 +344,7 @@ func StartCommandHandlers(ctx context.Context, wg *sync.WaitGroup, mqttClient mq
 	missionCommands := make(chan string)
 	gstreamerCommands := make(chan string)
 
-	go handleControlCommands(ctx, wg, mqttClient, node, controlCommands, deviceID)
+	go handleControlCommands(ctx, wg, mqttClient, rclContext, node, controlCommands, deviceID)
 	go handleMissionCommands(ctx, wg, node, missionCommands)
 	go handleGstreamerCommands(ctx, wg, node, gstreamerCommands)
 	go publishMissionState(ctx, wg, mqttClient, deviceID)
@@ -387,22 +375,14 @@ func StartCommandHandlers(ctx context.Context, wg *sync.WaitGroup, mqttClient mq
 	configTopic := fmt.Sprintf("/devices/%s/config", deviceID)
 	configToken := mqttClient.Subscribe(configTopic, 0, func(client mqtt.Client, msg mqtt.Message) {
 		log.Printf("Got config:\n%v", string(msg.Payload()))
-		yamlConfig := make(map[string]interface{}, 0)
+		yamlConfig := make(map[string]interface{})
 		err := yaml.Unmarshal(msg.Payload(), &yamlConfig)
 		if err != nil {
 			log.Printf("Failed to unmarshal config yaml: %v", err)
 			return
 		}
-		if wifiYaml, ok := yamlConfig["initial-wifi"]; ok {
-			wifiJson, err := json.Marshal(wifiYaml)
-			if err == nil {
-				go publishMeshConfig(node, string(wifiJson))
-			} else {
-				log.Printf("Failed to marshal mesh json: %v", err)
-			}
-		} else {
-			log.Println("initial-wifi -configuration missing -> mesh not configured")
-		}
+		go publishOTAProfile(node, yamlConfig["profile"])
+		go publishMeshConfig(node, yamlConfig["initial-wifi"])
 		go publishMissionDataRecorderConfig(
 			missionDataRecorderConfigPub,
 			yamlConfig["mission-data-recorder"],
@@ -425,12 +405,50 @@ func publishDeviceState(ctx context.Context, mqttClient mqtt.Client, deviceID st
 	mqttClient.Publish(topic, 1, false, b)
 }
 
-func publishMeshConfig(node *ros2.Node, json string) {
-	log.Printf("Sending mesh parameters")
+func publishOTAProfile(node *ros2.Node, configYaml interface{}) {
+	if configYaml == nil {
+		log.Println("profile config was not included -> no OTA")
+		return
+	}
+
+	wifiJson, err := json.Marshal(configYaml)
+	if err != nil {
+		log.Printf("Failed to marshal profile json: %v", err)
+		return
+	}
+
+	log.Printf("Publishing OTA profile")
+	pub, _ := node.NewPublisher("ota_profile", &std_msgs.String{})
+	time.Sleep(5 * time.Second)
+	err = pub.Publish(ros2app.CreateString(string(wifiJson)))
+	if err != nil {
+		log.Printf("Failed to publish OTA profile: %v", err)
+		return
+	}
+	log.Printf("OTA profile published")
+}
+
+func publishMeshConfig(node *ros2.Node, configYaml interface{}) {
+	if configYaml == nil {
+		log.Println("initial-wifi config was not included -> mesh not configured")
+		return
+	}
+
+	wifiJson, err := json.Marshal(configYaml)
+	if err != nil {
+		log.Printf("Failed to marshal mesh json: %v", err)
+		return
+	}
+
+	log.Printf("Publishing mesh parameters")
 	pub, _ := node.NewPublisher("mesh_parameters", &std_msgs.String{})
 	time.Sleep(5 * time.Second)
-	pub.Publish(ros2app.CreateString(string(json)))
-	log.Printf("Mesh parameters sent")
+	err = pub.Publish(ros2app.CreateString(string(wifiJson)))
+	if err != nil {
+		log.Printf("Failed to publish mesh json: %v", err)
+		return
+	}
+	log.Printf("Mesh parameters published")
 }
 
 func publishMissionDataRecorderConfig(pub *ros2.Publisher, configYaml interface{}) {

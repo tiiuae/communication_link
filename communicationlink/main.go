@@ -99,7 +99,7 @@ func main() {
 	telemetry.Start(ctx, &wg, mqttClient, *deviceID)
 
 	// Setup commandhandlers
-	commands.StartCommandHandlers(ctx, &wg, mqttClient, rclLocalNode, *deviceID)
+	commands.StartCommandHandlers(ctx, &wg, mqttClient, rclContext, rclLocalNode, *deviceID)
 
 	// Setup mesh
 	// publishDefaultMesh(ctx, mqttClient, rclLocalNode, *deviceID)

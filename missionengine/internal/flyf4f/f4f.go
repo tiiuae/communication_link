@@ -52,6 +52,7 @@ func (f4f *f4f) runMessageLoop(ctx context.Context, wg *sync.WaitGroup, post typ
 
 	defer armingService.Close()
 	defer takeoffService.Close()
+	defer landingService.Close()
 	defer waypointService.Close()
 
 	for {
@@ -92,14 +93,14 @@ func publishMessages(ctx context.Context, armingService *ros2.Client, takeoffSer
 			req := std_srvs.NewTrigger_Request()
 			res, _, err := takeoffService.Send(ctx, req)
 			if err != nil {
-				log.Fatalf("%v", err)
+				log.Printf("%v", err)
 			}
 			log.Printf("F4F: TAKEOFF: %v", res)
 		case types.Land:
 			req := std_srvs.NewTrigger_Request()
 			res, _, err := landingService.Send(ctx, req)
 			if err != nil {
-				log.Fatalf("%v", err)
+				log.Printf("%v", err)
 			}
 			log.Printf("F4F: LAND: %v", res)
 		case types.SendPath:
@@ -107,7 +108,7 @@ func publishMessages(ctx context.Context, armingService *ros2.Client, takeoffSer
 			req.Goal = []float64{m.Points[0].X, m.Points[0].Y, m.Points[0].Z, 0.0}
 			res, _, err := waypointService.Send(ctx, req)
 			if err != nil {
-				log.Fatalf("%v", err)
+				log.Printf("%v", err)
 			}
 			log.Printf("F4F: WAYPOINT_IN: %v -> %v", req.Goal, res)
 		case types.FlyPathProgress:
