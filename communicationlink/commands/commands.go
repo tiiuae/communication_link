@@ -443,7 +443,10 @@ func publishMeshConfig(node *rclgo.Node, configYaml interface{}) {
 	}
 
 	log.Printf("Publishing mesh parameters")
-	pub, _ := node.NewPublisher("mesh_parameters", std_msgs.StringTypeSupport, nil)
+	opts := rclgo.NewDefaultPublisherOptions()
+	opts.Qos.Durability = rclgo.RmwQosDurabilityPolicyTransientLocal
+	opts.Qos.Reliability = rclgo.RmwQosReliabilityPolicyReliable
+	pub, _ := node.NewPublisher("mesh_parameters", std_msgs.StringTypeSupport, opts)
 	time.Sleep(5 * time.Second)
 	err = pub.Publish(ros2app.CreateString(string(wifiJson)))
 	if err != nil {
