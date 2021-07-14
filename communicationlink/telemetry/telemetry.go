@@ -7,7 +7,7 @@ import (
 	"log"
 	"math"
 	"strings"
-	"sync"
+	"sync"       
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -15,11 +15,11 @@ import (
 
 	"github.com/tiiuae/communication_link/communicationlink/ros2app"
 
-	"github.com/tiiuae/rclgo/pkg/ros2"
-	px4_msgs "github.com/tiiuae/rclgo/pkg/ros2/msgs/px4_msgs/msg"
-	std_msgs "github.com/tiiuae/rclgo/pkg/ros2/msgs/std_msgs/msg"
+	px4_msgs "github.com/tiiuae/rclgo-msgs/px4_msgs/msg"
+	std_msgs "github.com/tiiuae/rclgo-msgs/std_msgs/msg"
+	"github.com/tiiuae/rclgo/pkg/rclgo"
 )
-
+   
 func RegisterLocalSubscriptions(subs *ros2app.Subscriptions, ctx context.Context, mqttClient mqtt.Client, deviceID string) {
 	subs.Add("VehicleGlobalPosition_PubSubTopic", "px4_msgs/VehicleGlobalPosition", handleGPSMessages)
 	subs.Add("VehicleLocalPosition_PubSubTopic", "px4_msgs/VehicleLocalPosition", handleLocalPosMessages)
@@ -153,7 +153,7 @@ func startSendingTelemetry(ctx context.Context, mqttClient mqtt.Client, deviceID
 	}
 }
 
-func handleGPSMessages(s *ros2.Subscription) {
+func handleGPSMessages(s *rclgo.Subscription) {
 	var m px4_msgs.VehicleGlobalPosition
 	_, err := s.TakeMessage(&m)
 	if err != nil {
@@ -169,7 +169,7 @@ func handleGPSMessages(s *ros2.Subscription) {
 	telemetryMutex.Unlock()
 }
 
-func handleLocalPosMessages(s *ros2.Subscription) {
+func handleLocalPosMessages(s *rclgo.Subscription) {
 	var m px4_msgs.VehicleLocalPosition
 	_, err := s.TakeMessage(&m)
 	if err != nil {
@@ -193,7 +193,7 @@ func handleLocalPosMessages(s *ros2.Subscription) {
 	telemetryMutex.Unlock()
 }
 
-func handleStatusMessages(s *ros2.Subscription) {
+func handleStatusMessages(s *rclgo.Subscription) {
 	var m px4_msgs.VehicleStatus
 	_, err := s.TakeMessage(&m)
 	if err != nil {
@@ -209,7 +209,7 @@ func handleStatusMessages(s *ros2.Subscription) {
 	telemetryMutex.Unlock()
 }
 
-func handleBatteryMessages(s *ros2.Subscription) {
+func handleBatteryMessages(s *rclgo.Subscription) {
 	var m px4_msgs.BatteryStatus
 	_, err := s.TakeMessage(&m)
 	if err != nil {
@@ -225,9 +225,9 @@ func handleBatteryMessages(s *ros2.Subscription) {
 	telemetryMutex.Unlock()
 }
 
-func handleDebugEvents(ctx context.Context, mqttClient mqtt.Client, deviceID string) func(s *ros2.Subscription) {
+func handleDebugEvents(ctx context.Context, mqttClient mqtt.Client, deviceID string) func(s *rclgo.Subscription) {
 	topic := fmt.Sprintf("/devices/%s/%s", deviceID, "events/debug-events")
-	return func(s *ros2.Subscription) {
+	return func(s *rclgo.Subscription) {
 		var m std_msgs.String
 		_, err := s.TakeMessage(&m)
 		if err != nil {
@@ -246,7 +246,7 @@ func handleDebugEvents(ctx context.Context, mqttClient mqtt.Client, deviceID str
 	}
 }
 
-func handleDebugValues(ctx context.Context, mqttClient mqtt.Client, deviceID string) func(s *ros2.Subscription) {
+func handleDebugValues(ctx context.Context, mqttClient mqtt.Client, deviceID string) func(s *rclgo.Subscription) {
 	topic := fmt.Sprintf("/devices/%s/%s", deviceID, "events/debug-values")
 	var mutex sync.Mutex
 	var currentValues debugValues = make(map[string]debugValue)
@@ -266,7 +266,7 @@ func handleDebugValues(ctx context.Context, mqttClient mqtt.Client, deviceID str
 			}
 		}
 	}()
-	return func(s *ros2.Subscription) {
+	return func(s *rclgo.Subscription) {
 		var m std_msgs.String
 		_, err := s.TakeMessage(&m)
 		if err != nil {
@@ -289,8 +289,8 @@ func handleDebugValues(ctx context.Context, mqttClient mqtt.Client, deviceID str
 	}
 }
 
-func handleMissionEngineMessages(ctx context.Context, mqttClient mqtt.Client, deviceID string) func(s *ros2.Subscription) {
-	return func(s *ros2.Subscription) {
+func handleMissionEngineMessages(ctx context.Context, mqttClient mqtt.Client, deviceID string) func(s *rclgo.Subscription) {
+	return func(s *rclgo.Subscription) {
 		var m std_msgs.String
 		_, rclErr := s.TakeMessage(&m)
 		if rclErr != nil {

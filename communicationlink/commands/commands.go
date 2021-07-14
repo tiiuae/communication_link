@@ -15,9 +15,9 @@ import (
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/tiiuae/communication_link/communicationlink/ros2app"
-	"github.com/tiiuae/rclgo/pkg/ros2"
-	nav_msgs "github.com/tiiuae/rclgo/pkg/ros2/msgs/nav_msgs/msg"
-	std_msgs "github.com/tiiuae/rclgo/pkg/ros2/msgs/std_msgs/msg"
+	nav_msgs "github.com/tiiuae/rclgo-msgs/nav_msgs/msg"
+	std_msgs "github.com/tiiuae/rclgo-msgs/std_msgs/msg"
+	"github.com/tiiuae/rclgo/pkg/rclgo"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
 	"gopkg.in/yaml.v3"
@@ -108,7 +108,7 @@ func initializeTrust(client mqtt.Client, deviceID string) {
 	log.Printf("Trust initialized")
 }
 
-func joinMission(payload []byte, pubMissions *ros2.Publisher) {
+func joinMission(payload []byte, pubMissions *rclgo.Publisher) {
 	var info struct {
 		GitServerAddress string `json:"git_server_address"`
 		GitServerKey     string `json:"git_server_key"`
@@ -157,7 +157,7 @@ func joinMission(payload []byte, pubMissions *ros2.Publisher) {
 	}
 }
 
-func leaveMission(payload []byte, pubMissions *ros2.Publisher) {
+func leaveMission(payload []byte, pubMissions *rclgo.Publisher) {
 	missionSlug = ""
 	msg := missionsMessage{
 		Timestamp:   time.Now().UTC(),
@@ -172,7 +172,7 @@ func leaveMission(payload []byte, pubMissions *ros2.Publisher) {
 	pubMissions.Publish(ros2app.CreateString(string(b)))
 }
 
-func updateBacklog(pubMissions *ros2.Publisher) {
+func updateBacklog(pubMissions *rclgo.Publisher) {
 	msg := missionsMessage{
 		Timestamp:   time.Now().UTC(),
 		From:        "self",
@@ -187,7 +187,7 @@ func updateBacklog(pubMissions *ros2.Publisher) {
 }
 
 // handleControlCommand takes a command string and forwards it to mavlinkcmd
-func handleControlCommand(ctx context.Context, command, deviceID string, mqttClient mqtt.Client, pubMissions *ros2.Publisher, armingService *ros2.Client, takeoffService *ros2.Client, landingService *ros2.Client) {
+func handleControlCommand(ctx context.Context, command, deviceID string, mqttClient mqtt.Client, pubMissions *rclgo.Publisher, armingService *rclgo.Client, takeoffService *rclgo.Client, landingService *rclgo.Client) {
 	var cmd controlCommand
 	err := json.Unmarshal([]byte(command), &cmd)
 	if err != nil {
@@ -220,7 +220,7 @@ func handleControlCommand(ctx context.Context, command, deviceID string, mqttCli
 }
 
 // handleMissionCommand takes a command string and forwards it to mavlinkcmd
-func handleMissionCommand(command string, pub *ros2.Publisher) {
+func handleMissionCommand(command string, pub *rclgo.Publisher) {
 	var cmd controlCommand
 	err := json.Unmarshal([]byte(command), &cmd)
 	if err != nil {
@@ -238,7 +238,7 @@ func handleMissionCommand(command string, pub *ros2.Publisher) {
 }
 
 // handleGstreamerCommand takes a command string and forwards it to gstreamercmd
-func handleGstreamerCommand(command string, pub *ros2.Publisher) {
+func handleGstreamerCommand(command string, pub *rclgo.Publisher) {
 	var cmd gstreamerCmd
 
 	err := json.Unmarshal([]byte(command), &cmd)
@@ -259,7 +259,7 @@ func handleGstreamerCommand(command string, pub *ros2.Publisher) {
 }
 
 // handleControlCommands routine waits for commands and executes them. The routine quits when quit channel is closed
-func handleControlCommands(ctx context.Context, wg *sync.WaitGroup, mqttClient mqtt.Client, rclContext *ros2.Context, node *ros2.Node, commands <-chan string, deviceID string) {
+func handleControlCommands(ctx context.Context, wg *sync.WaitGroup, mqttClient mqtt.Client, rclContext *rclgo.Context, node *rclgo.Node, commands <-chan string, deviceID string) {
 	wg.Add(1)
 	defer wg.Done()
 	pubMissions := ros2app.NewPublisher(node, "missions", "std_msgs/String")
@@ -283,7 +283,7 @@ func handleControlCommands(ctx context.Context, wg *sync.WaitGroup, mqttClient m
 }
 
 // handleMissionCommands routine waits for commands and executes them. The routine quits when quit channel is closed
-func handleMissionCommands(ctx context.Context, wg *sync.WaitGroup, node *ros2.Node, commands <-chan string) {
+func handleMissionCommands(ctx context.Context, wg *sync.WaitGroup, node *rclgo.Node, commands <-chan string) {
 	wg.Add(1)
 	defer wg.Done()
 	pub := ros2app.NewPublisher(node, "whereever", "nav_msgs/Path")
@@ -299,7 +299,7 @@ func handleMissionCommands(ctx context.Context, wg *sync.WaitGroup, node *ros2.N
 }
 
 // handleGstreamerCommands routine waits for commands and executes them. The routine quits when quit channel is closed
-func handleGstreamerCommands(ctx context.Context, wg *sync.WaitGroup, node *ros2.Node, commands <-chan string) {
+func handleGstreamerCommands(ctx context.Context, wg *sync.WaitGroup, node *rclgo.Node, commands <-chan string) {
 	wg.Add(1)
 	defer wg.Done()
 	pub := ros2app.NewPublisher(node, "videostreamcmd", "std_msgs/String")
@@ -333,7 +333,7 @@ func publishMissionState(ctx context.Context, wg *sync.WaitGroup, mqttClient mqt
 	}
 }
 
-func StartCommandHandlers(ctx context.Context, wg *sync.WaitGroup, mqttClient mqtt.Client, rclContext *ros2.Context, node *ros2.Node, deviceID string) {
+func StartCommandHandlers(ctx context.Context, wg *sync.WaitGroup, mqttClient mqtt.Client, rclContext *rclgo.Context, node *rclgo.Node, deviceID string) {
 	missionDataRecorderConfigPub := ros2app.NewPublisher(
 		node,
 		"mission_data_recorder/config",
@@ -405,7 +405,7 @@ func publishDeviceState(ctx context.Context, mqttClient mqtt.Client, deviceID st
 	mqttClient.Publish(topic, 1, false, b)
 }
 
-func publishOTAProfile(node *ros2.Node, configYaml interface{}) {
+func publishOTAProfile(node *rclgo.Node, configYaml interface{}) {
 	if configYaml == nil {
 		log.Println("profile config was not included -> no OTA")
 		return
@@ -418,7 +418,9 @@ func publishOTAProfile(node *ros2.Node, configYaml interface{}) {
 	}
 
 	log.Printf("Publishing OTA profile")
-	pub, _ := node.NewPublisher("ota_profile", &std_msgs.String{})
+	opts := rclgo.NewDefaultPublisherOptions()
+	opts.Qos.Reliability = rclgo.RmwQosReliabilityPolicySystemDefault
+	pub, _ := node.NewPublisher("ota_profile", std_msgs.StringTypeSupport, opts)
 	time.Sleep(5 * time.Second)
 	err = pub.Publish(ros2app.CreateString(string(wifiJson)))
 	if err != nil {
@@ -428,7 +430,7 @@ func publishOTAProfile(node *ros2.Node, configYaml interface{}) {
 	log.Printf("OTA profile published")
 }
 
-func publishMeshConfig(node *ros2.Node, configYaml interface{}) {
+func publishMeshConfig(node *rclgo.Node, configYaml interface{}) {
 	if configYaml == nil {
 		log.Println("initial-wifi config was not included -> mesh not configured")
 		return
@@ -441,7 +443,7 @@ func publishMeshConfig(node *ros2.Node, configYaml interface{}) {
 	}
 
 	log.Printf("Publishing mesh parameters")
-	pub, _ := node.NewPublisher("mesh_parameters", &std_msgs.String{})
+	pub, _ := node.NewPublisher("mesh_parameters", std_msgs.StringTypeSupport, nil)
 	time.Sleep(5 * time.Second)
 	err = pub.Publish(ros2app.CreateString(string(wifiJson)))
 	if err != nil {
@@ -451,7 +453,7 @@ func publishMeshConfig(node *ros2.Node, configYaml interface{}) {
 	log.Printf("Mesh parameters published")
 }
 
-func publishMissionDataRecorderConfig(pub *ros2.Publisher, configYaml interface{}) {
+func publishMissionDataRecorderConfig(pub *rclgo.Publisher, configYaml interface{}) {
 	if configYaml == nil {
 		log.Println("mission-data-recorder config was not included")
 		return

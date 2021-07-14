@@ -3,18 +3,20 @@ package ros2app
 import (
 	"log"
 
-	"github.com/tiiuae/rclgo/pkg/ros2"
-	std_msgs "github.com/tiiuae/rclgo/pkg/ros2/msgs/std_msgs/msg"
-	"github.com/tiiuae/rclgo/pkg/ros2/ros2_type_dispatcher"
-	"github.com/tiiuae/rclgo/pkg/ros2/ros2types"
+	std_msgs "github.com/tiiuae/rclgo-msgs/std_msgs/msg"
+	"github.com/tiiuae/rclgo/pkg/rclgo"
+	"github.com/tiiuae/rclgo/pkg/rclgo/typemap"
+	"github.com/tiiuae/rclgo/pkg/rclgo/types"
 )
 
-func NewPublisher(rclNode *ros2.Node, topicName string, messageType string) *ros2.Publisher {
-	ros2msg, ok := ros2_type_dispatcher.TranslateROS2MsgTypeNameToType(messageType)
+func NewPublisher(rclNode *rclgo.Node, topicName string, messageType string) *rclgo.Publisher {
+	ros2msg, ok := typemap.GetMessage(messageType)
 	if !ok {
 		log.Fatalf("Unable to map message type: %s", messageType)
 	}
-	pub, err := rclNode.NewPublisher(topicName, ros2msg)
+	opts := rclgo.NewDefaultPublisherOptions()
+	opts.Qos.Reliability = rclgo.RmwQosReliabilityPolicySystemDefault
+	pub, err := rclNode.NewPublisher(topicName, ros2msg, opts)
 	if err != nil {
 		log.Fatalf("Unable to create publisher: %v", err)
 	}
@@ -22,8 +24,8 @@ func NewPublisher(rclNode *ros2.Node, topicName string, messageType string) *ros
 	return pub
 }
 
-func CreateString(value string) ros2types.ROS2Msg {
+func CreateString(value string) types.Message {
 	rosmsg := std_msgs.NewString()
-	rosmsg.Data.SetDefaults(value)
+	rosmsg.Data = value
 	return rosmsg
 }

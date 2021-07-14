@@ -19,7 +19,7 @@ import (
 	"github.com/tiiuae/communication_link/communicationlink/commands"
 	"github.com/tiiuae/communication_link/communicationlink/ros2app"
 	"github.com/tiiuae/communication_link/communicationlink/telemetry"
-	"github.com/tiiuae/rclgo/pkg/ros2"
+	"github.com/tiiuae/rclgo/pkg/rclgo"
 )
 
 const (
@@ -58,12 +58,12 @@ func main() {
 	defer mqttClient.Disconnect(1000)
 
 	// Setup ROS nodes
-	rclArgs, rclErr := ros2.NewRCLArgs("")
+	rclArgs, rclErr := rclgo.NewRCLArgs("")
 	if rclErr != nil {
 		log.Fatal(rclErr)
 	}
 
-	rclContext, rclErr := ros2.NewContext(&wg, 0, rclArgs)
+	rclContext, rclErr := rclgo.NewContext(&wg, 0, rclArgs)
 	if rclErr != nil {
 		log.Fatal(rclErr)
 	}
@@ -195,7 +195,7 @@ func newMQTTClient() mqtt.Client {
 	return client
 }
 
-func publishDefaultMesh(ctx context.Context, mqttClient mqtt.Client, node *ros2.Node, deviceID string) {
+func publishDefaultMesh(ctx context.Context, mqttClient mqtt.Client, node *rclgo.Node, deviceID string) {
 	go func() {
 		log.Printf("Sending mesh parameters")
 		pub := ros2app.NewPublisher(node, "mesh_parameters", "std_msgs/String")
